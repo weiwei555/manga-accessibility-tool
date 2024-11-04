@@ -1,5 +1,16 @@
 document.getElementById("manga-upload").addEventListener("change", handleFileUpload);
 
+function setMode(mode) {
+   const descriptionText = document.getElementById("description-text");
+   if (mode === 'panel') {
+      descriptionText.innerHTML = "Panel-by-Panel mode selected.";
+      // Add code here to show panel descriptions as needed.
+   } else if (mode === 'summary') {
+      descriptionText.innerHTML = "Page Summary mode selected.";
+      // Add code here to show page summary descriptions as needed.
+   }
+}
+
 async function handleFileUpload(event) {
    const files = event.target.files;
    for (let file of files) {
