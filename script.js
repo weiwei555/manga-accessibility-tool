@@ -14,11 +14,10 @@ function setMode(mode) {
 async function handleFileUpload(event) {
    const files = event.target.files;
    for (let file of files) {
-      if (file.type === "application/pdf") {
-         // Handle PDF with PDF.js
-         await handlePDF(file);
-      } else if (file.type.startsWith("image/")) {
+      if (file.type.startsWith("image/")) {
          await handleImage(file);
+      } else {
+         alert("Please upload image files only.");
       }
    }
 }
@@ -37,17 +36,45 @@ async function handleImage(file) {
 
 async function generateDescription(imageBlob) {
    const apiUrl = "https://api-inference.huggingface.co/models/nlpconnect/vit-gpt2-image-captioning";
-   const apiKey = "YOUR_HUGGING_FACE_API_KEY"; // Replace with your Hugging Face API key
+   const apiKey = "YOUR_HUGGING_FACE_API_KEY"; // Replace with your actual API key
 
-   const formData = new FormData();
-   formData.append("file", imageBlob);
+   // Convert imageBlob to base64
+   const base64Image = await blobToBase64(imageBlob);
 
-   const response = await fetch(apiUrl, {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${apiKey}` },
-      body: formData
+   try {
+      const response = await fetch(apiUrl, {
+         method: "POST",
+         headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json"
+         },
+         body: JSON.stringify({
+            inputs: base64Image
+         })
+      });
+      
+      if (!response.ok) {
+         const errorData = await response.json();
+         console.error("Error response from API:", errorData);
+         throw new Error(`HTTP error! Status: ${response.status} - ${errorData.error}`);
+      }
+      
+      const data = await response.json();
+      console.log("API response:", data);  // Log the response for debugging
+
+      return data[0]?.generated_text || "No description generated";
+   } catch (error) {
+      console.error("Error generating description:", error);
+      return "Failed to generate description. Please try again.";
+   }
+}
+
+// Helper function to convert Blob to base64
+function blobToBase64(blob) {
+   return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result.split(",")[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
    });
-   
-   const data = await response.json();
-   return data[0]?.generated_text || "No description generated";
 }
