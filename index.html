@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+   <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   <title>Interactive Manga Description Tool</title>
+</head>
+<body>
+   <h1>Accessible Manga Reader</h1>
+   
+   <!-- Display Manga Page -->
+   <div id="manga-page-container">
+      <img id="manga-page" src="page1.jpg" alt="Manga page with numbered panels">
+      <p><strong>Select a panel to hear its description:</strong></p>
+   </div>
+
+   <!-- Panel Descriptions -->
+   <div id="panel-descriptions">
+      <button onclick="readDescription(1)">Panel 1</button>
+      <button onclick="readDescription(2)">Panel 2</button>
+      <button onclick="readDescription(3)">Panel 3</button>
+      <!-- More buttons as needed -->
+      <div id="description-text"></div>
+   </div>
+
+   <!-- Reading Mode Selection -->
+   <p><strong>Select Reading Mode:</strong></p>
+   <button onclick="setMode('panel')">Panel-by-Panel</button>
+   <button onclick="setMode('summary')">Page Summary</button>
+
+   <!-- JavaScript -->
+   <script>
+      const descriptions = {
+         "panel": {
+            1: "Panel 1: Character A smiles warmly, holding a book.",
+            2: "Panel 2: Character B looks surprised, their hand raised.",
+            3: "Panel 3: Background scene showing a cityscape at dusk."
+         },
+         "summary": "Character A and B interact in a city at dusk. Character A is holding a book and smiling warmly at Character B."
+      };
+      let mode = 'panel';
+
+      function setMode(selectedMode) {
+         mode = selectedMode;
+         if (mode === 'summary') {
+            document.getElementById("description-text").textContent = descriptions["summary"];
+         } else {
+            document.getElementById("description-text").textContent = '';
+         }
+      }
+
+      function readDescription(panelNumber) {
+         if (mode === 'panel') {
+            document.getElementById("description-text").textContent = descriptions["panel"][panelNumber];
+         }
+      }
+   </
+   </script>
+</body>
+</html>
