@@ -36,7 +36,7 @@ async function handleImage(file) {
 
 async function generateDescription(imageBlob) {
    const apiUrl = "https://api-inference.huggingface.co/models/nlpconnect/vit-gpt2-image-captioning";
-   const apiKey = "YOUR_HUGGING_FACE_API_KEY"; // Replace with your actual API key
+   const apiKey = "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"; // Replace with your actual API key
 
    // Convert imageBlob to base64
    const base64Image = await blobToBase64(imageBlob);
