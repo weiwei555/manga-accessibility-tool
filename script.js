@@ -1,14 +1,5 @@
 document.getElementById("manga-upload").addEventListener("change", handleFileUpload);
 
-function setMode(mode) {
-   const descriptionText = document.getElementById("description-text");
-   if (mode === 'panel') {
-      descriptionText.innerHTML = "Panel-by-Panel mode selected.";
-   } else if (mode === 'summary') {
-      descriptionText.innerHTML = "Page Summary mode selected.";
-   }
-}
-
 async function handleFileUpload(event) {
    const files = event.target.files;
    for (let file of files) {
@@ -26,47 +17,18 @@ async function handleImage(file) {
    img.alt = "Manga page";
    document.getElementById("manga-page-container").appendChild(img);
 
-   try {
-      // Perform OCR to extract text from the image
-      const ocrText = await extractTextFromImage(file);
-      
-      // Generate image caption from Hugging Face model
-      const caption = await generateDescription(file);
+   // Generate image description with GPT-4 Vision
+   const description = await generateDescriptionWithOpenAI(file);
 
-      // Combine OCR text and caption into a single description
-      const description = ocrText.trim() 
-         ? `Text in image: "${ocrText.trim()}" | Generated caption: "${caption}"`
-         : `OCR failed to read text accurately. Generated caption: "${caption}"`;
-
-      const descriptionElement = document.createElement("p");
-      descriptionElement.textContent = description;
-      document.getElementById("description-text").appendChild(descriptionElement);
-   } catch (error) {
-      console.error("Error handling image:", error);
-      const descriptionElement = document.createElement("p");
-      descriptionElement.textContent = "Failed to generate description. Please try a clearer image.";
-      document.getElementById("description-text").appendChild(descriptionElement);
-   }
+   // Display the description
+   const descriptionElement = document.createElement("p");
+   descriptionElement.textContent = description;
+   document.getElementById("description-text").appendChild(descriptionElement);
 }
 
-// OCR Function with Improved Logging
-async function extractTextFromImage(imageBlob) {
-   try {
-      const result = await Tesseract.recognize(
-         imageBlob,
-         'eng',  // Adjust language as needed
-         { logger: m => console.log(m) }
-      );
-      return result.data.text;
-   } catch (error) {
-      console.error("OCR error:", error);
-      return "";  // Return an empty string if OCR fails
-   }
-}
-
-async function generateDescription(imageBlob) {
-   const apiUrl = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base";
-   const apiKey = "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"; // Replace with your actual API key
+async function generateDescriptionWithOpenAI(imageBlob) {
+   const apiUrl = "https://api.openai.com/v1/images/generations";  // Hypothetical endpoint; verify in OpenAI documentation
+   const apiKey = "YOUR_OPENAI_API_KEY"; // Replace with your actual OpenAI API key
 
    // Convert imageBlob to base64
    const base64Image = await blobToBase64(imageBlob);
@@ -79,26 +41,29 @@ async function generateDescription(imageBlob) {
             "Content-Type": "application/json"
          },
          body: JSON.stringify({
-            inputs: base64Image
+            model: "gpt-4-vision",  // Hypothetical model name for GPT-4 with vision; verify in OpenAI API docs
+            image: base64Image,
+            instructions: "Provide a detailed description of this image."
          })
       });
-      
+
       if (!response.ok) {
          const errorData = await response.json();
          console.error("Error response from API:", errorData);
          throw new Error(`HTTP error! Status: ${response.status} - ${errorData.error}`);
       }
-      
+
       const data = await response.json();
       console.log("API response:", data);  // Log the response for debugging
 
-      return data[0]?.generated_text || "No description generated";
+      return data.description || "No description generated";  // Hypothetical key `description` in response; verify in API response format
    } catch (error) {
       console.error("Error generating description:", error);
       return "Failed to generate description. Please try again.";
    }
 }
 
+// Helper function to convert Blob to base64
 function blobToBase64(blob) {
    return new Promise((resolve, reject) => {
       const reader = new FileReader();
