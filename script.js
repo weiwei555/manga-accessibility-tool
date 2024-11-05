@@ -5,10 +5,8 @@ function setMode(mode) {
 
    if (mode === "panel") {
       descriptionText.innerHTML = "Panel-by-Panel mode selected.";
-      // Add logic here to handle panel-by-panel description updates
    } else if (mode === "summary") {
       descriptionText.innerHTML = "Page Summary mode selected.";
-      // Add logic here to handle page summary description updates
    }
 }
 
@@ -29,7 +27,7 @@ async function handleImage(file) {
    img.alt = "Manga page";
    document.getElementById("manga-page-container").appendChild(img);
 
-   // Generate image description with GPT-4 Vision
+   // Generate image description with GPT-4
    const description = await generateDescriptionWithOpenAI(file);
 
    // Display the description
@@ -39,8 +37,8 @@ async function handleImage(file) {
 }
 
 async function generateDescriptionWithOpenAI(imageBlob) {
-   const apiUrl = "https://api.openai.com/v1/images/generations";  // Hypothetical endpoint; verify in OpenAI documentation
-   const apiKey = "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"; // Replace with your actual OpenAI API key
+   const apiUrl = "https://api.openai.com/v1/chat/completions";
+   const apiKey = "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"; // Replace with your actual OpenAI API key
 
    // Convert imageBlob to base64
    const base64Image = await blobToBase64(imageBlob);
@@ -53,22 +51,25 @@ async function generateDescriptionWithOpenAI(imageBlob) {
             "Content-Type": "application/json"
          },
          body: JSON.stringify({
-            model: "gpt-4-vision",  // Hypothetical model name for GPT-4 with vision; verify in OpenAI API docs
-            image: base64Image,
-            instructions: "Provide a detailed description of this image."
+            model: "gpt-4",
+            messages: [
+               { role: "system", content: "You are an assistant that provides descriptions for images." },
+               { role: "user", content: `Please describe this image: data:image/jpeg;base64,${base64Image}` }
+            ]
          })
       });
 
       if (!response.ok) {
          const errorData = await response.json();
          console.error("Error response from API:", errorData);
-         throw new Error(`HTTP error! Status: ${response.status} - ${errorData.error}`);
+         return "Error: Unable to generate description. Check your API key or permissions.";
       }
 
       const data = await response.json();
-      console.log("API response:", data);  // Log the response for debugging
+      console.log("API response:", data); // Log the response for debugging
 
-      return data.description || "No description generated";  // Hypothetical key `description` in response; verify in API response format
+      // Accessing the generated text from GPT-4 response
+      return data.choices[0].message.content || "No description generated";
    } catch (error) {
       console.error("Error generating description:", error);
       return "Failed to generate description. Please try again.";
