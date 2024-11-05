@@ -28,7 +28,7 @@ async function handleImage(file) {
 
 async function generateDescriptionWithOpenAI(imageBlob) {
    const apiUrl = "https://api.openai.com/v1/images/generations";  // Hypothetical endpoint; verify in OpenAI documentation
-   const apiKey = "key"; // Replace with your actual OpenAI API key
+   const apiKey = "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"; // Replace with your actual OpenAI API key
 
    // Convert imageBlob to base64
    const base64Image = await blobToBase64(imageBlob);
