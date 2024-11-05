@@ -1,5 +1,15 @@
 document.getElementById("manga-upload").addEventListener("change", handleFileUpload);
 
+async function extractTextFromImage(imageBlob) {
+   const result = await Tesseract.recognize(
+      imageBlob,
+      'eng',  // Language setting; adjust if your manga includes other languages
+      { logger: m => console.log(m) }  // Optional: logs progress
+   );
+   return result.data.text;
+}
+
+
 function setMode(mode) {
    const descriptionText = document.getElementById("description-text");
    if (mode === 'panel') {
