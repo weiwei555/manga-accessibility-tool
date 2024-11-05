@@ -37,8 +37,8 @@ async function handleImage(file) {
 }
 
 async function generateDescriptionWithOpenAI(imageBlob) {
-   const apiUrl = "https://api.openai.com/v1/models";
-   const apiKey = "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"; // Replace with your actual OpenAI API key
+   const apiUrl = "https://api.openai.com/v1/chat/completions";
+   const apiKey = "sk-svcacct-H4_1JvJCXhzC6lYHC3AdXYWP_3XoiDD0FuK9toIXQdwo57rybxe_eoOQRgqtvT3BlbkFJes5iccb33RQcPKDFaPoBvQrPGtnWvXz3SZgfz7R1JEuWdaLNoiesHFUy7foQwA"; // Replace with your actual OpenAI API key
 
    // Convert imageBlob to base64
    const base64Image = await blobToBase64(imageBlob);
