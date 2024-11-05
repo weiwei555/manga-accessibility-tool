@@ -38,7 +38,15 @@ async function handleImage(file) {
    img.alt = "Manga page";
    document.getElementById("manga-page-container").appendChild(img);
 
-   const description = await generateDescription(file);
+   // Perform OCR to extract text from the image
+   const ocrText = await extractTextFromImage(file);
+   
+   // Generate image caption from Hugging Face model
+   const caption = await generateDescription(file);
+
+   // Combine OCR text and caption into a single description
+   const description = `Text in image: "${ocrText.trim()}" | Generated caption: "${caption}"`;
+
    const descriptionElement = document.createElement("p");
    descriptionElement.textContent = description;
    document.getElementById("description-text").appendChild(descriptionElement);
@@ -78,6 +86,17 @@ async function generateDescription(imageBlob) {
       return "Failed to generate description. Please try again.";
    }
 }
+
+// Helper function to convert Blob to base64
+function blobToBase64(blob) {
+   return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result.split(",")[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+   });
+}
+
 
 // Helper function to convert Blob to base64
 function blobToBase64(blob) {
