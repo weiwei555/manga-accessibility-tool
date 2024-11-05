@@ -37,7 +37,7 @@ async function handleImage(file) {
 }
 
 async function generateDescriptionWithOpenAI(imageBlob) {
-   const apiUrl = "https://api.openai.com/v1/chat/completions";
+   const apiUrl = "https://api.openai.com/v1/models";
    const apiKey = "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"; // Replace with your actual OpenAI API key
 
    // Convert imageBlob to base64
