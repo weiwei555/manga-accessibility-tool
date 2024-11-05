@@ -54,7 +54,7 @@ async function generateDescriptionWithOpenAI(imageBlob) {
             model: "gpt-4",
             messages: [
                { role: "system", content: "You are an assistant that provides descriptions for images." },
-               { role: "user", content: `Please describe this image: data:image/jpeg;base64,${base64Image}` }
+               { role: "user", content: `Describe this image: data:image/jpeg;base64,${base64Image}` }
             ]
          })
       });
@@ -68,7 +68,6 @@ async function generateDescriptionWithOpenAI(imageBlob) {
       const data = await response.json();
       console.log("API response:", data); // Log the response for debugging
 
-      // Accessing the generated text from GPT-4 response
       return data.choices[0].message.content || "No description generated";
    } catch (error) {
       console.error("Error generating description:", error);
