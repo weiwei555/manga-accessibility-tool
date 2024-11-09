@@ -71,15 +71,17 @@ async function handleImage(file) {
 }
 
 async function generateDescriptionWithHuggingFace(imageBlob) {
-   const apiUrl = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base";
+   const apiUrl = "https://api-inference.huggingface.co/models/Salesforce/blip2-flan-t5-xl";
    const apiKey = "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"; // Replace with your Hugging Face API key
 
    const base64Image = await blobToBase64(imageBlob);
 
+   const prompt = "Describe this manga panel in detail, including characters, actions, emotions, and any text.";
+
    const payload = {
       inputs: {
          image: base64Image,
-         do_sample: false,
+         text: prompt
       },
       options: {
          wait_for_model: true,
@@ -105,8 +107,8 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
       const data = await response.json();
       console.log("API response:", data);
 
-      // The response contains 'generated_text' or 'caption'
-      return data.caption || data[0]?.generated_text || "No description generated";
+      // The response may contain 'generated_text'
+      return data.generated_text || data[0]?.generated_text || "No description generated";
    } catch (error) {
       console.error("Error generating description:", error);
       return "Failed to generate description. Please try again.";
@@ -223,7 +225,7 @@ function segmentPanels(imageBlob) {
             return;
          }
 
-         // **Sort the contours from top-left to bottom-right**
+         // Sort the contours from top-left to bottom-right
          validContours.sort((a, b) => {
             // Calculate the center of each rectangle
             const aCenterX = a.rect.x + a.rect.width / 2;
