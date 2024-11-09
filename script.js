@@ -32,51 +32,52 @@ async function handleImage(file) {
 
    console.log("Original image displayed");
 
-   // Segment the panels
-   const panels = await segmentPanels(file);
+   try {
+      // Segment the panels
+      const panels = await segmentPanels(file);
 
-   console.log("Number of panels found:", panels.length);
+      console.log("Number of panels found:", panels.length);
 
-   for (const panelBlob of panels) {
-      // Display each panel
-      const panelImg = document.createElement("img");
-      panelImg.src = URL.createObjectURL(panelBlob);
-      panelImg.alt = "Manga panel";
-      document.getElementById("manga-page-container").appendChild(panelImg);
+      for (const panelBlob of panels) {
+         // Display each panel
+         const panelImg = document.createElement("img");
+         panelImg.src = URL.createObjectURL(panelBlob);
+         panelImg.alt = "Manga panel";
+         document.getElementById("manga-page-container").appendChild(panelImg);
 
-      console.log("Panel image displayed");
+         console.log("Panel image displayed");
 
-      // Generate image description with Hugging Face
-      const description = await generateDescriptionWithHuggingFace(panelBlob);
+         // Generate image description with Hugging Face
+         const description = await generateDescriptionWithHuggingFace(panelBlob);
 
-      console.log("Description generated:", description);
+         console.log("Description generated:", description);
 
-      // Preprocess and extract text with Tesseract.js
-      const ocrText = await extractTextWithOCR(panelBlob);
+         // Preprocess and extract text with Tesseract.js
+         const ocrText = await extractTextWithOCR(panelBlob);
 
-      console.log("OCR text extracted:", ocrText);
+         console.log("OCR text extracted:", ocrText);
 
-      // Combine the description and OCR text
-      const combinedDescription = `${description}\nDialog: ${ocrText}`;
+         // Combine the description and OCR text
+         const combinedDescription = `${description}\nDialog: ${ocrText}`;
 
-      // Display the description
-      const descriptionElement = document.createElement("p");
-      descriptionElement.textContent = combinedDescription;
-      document.getElementById("description-text").appendChild(descriptionElement);
+         // Display the description
+         const descriptionElement = document.createElement("p");
+         descriptionElement.textContent = combinedDescription;
+         document.getElementById("description-text").appendChild(descriptionElement);
+      }
+   } catch (error) {
+      console.error("Error in handleImage:", error);
    }
 }
 
 async function generateDescriptionWithHuggingFace(imageBlob) {
-   const apiUrl = "https://api-inference.huggingface.co/models/Salesforce/blip2-flan-t5-xl";
+   const apiUrl = "https://api-inference.huggingface.co/models/nlpconnect/vit-gpt2-image-captioning";
    const apiKey = "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"; // Replace with your Hugging Face API key
 
    const base64Image = await blobToBase64(imageBlob);
 
    const payload = {
-      inputs: {
-         image: base64Image,
-         text: "Describe in detail the manga panel, including the characters' appearances, actions, emotions, and any visible text."
-      },
+      inputs: base64Image,
       options: {
          wait_for_model: true
       }
@@ -101,7 +102,8 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
       const data = await response.json();
       console.log("API response:", data);
 
-      return data.generated_text || data[0]?.generated_text || "No description generated";
+      // The response is an array of objects with 'generated_text' property
+      return data[0]?.generated_text || "No description generated";
    } catch (error) {
       console.error("Error generating description:", error);
       return "Failed to generate description. Please try again.";
@@ -112,7 +114,11 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
 function blobToBase64(blob) {
    return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result.split(',')[1]);
+      reader.onloadend = () => {
+         // Remove the data URL prefix to get just the base64-encoded string
+         const base64String = reader.result.split(',')[1];
+         resolve(base64String);
+      };
       reader.onerror = reject;
       reader.readAsDataURL(blob);
    });
