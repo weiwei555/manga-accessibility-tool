@@ -28,7 +28,7 @@ async function handleImage(file) {
    document.getElementById("manga-page-container").appendChild(img);
 
    // Generate image description with GPT-4
-   const description = await generateDescriptionWithOpenAI(file);
+   const description = await generateDescriptionWithHuggingFace(file);
 
    // Display the description
    const descriptionElement = document.createElement("p");
