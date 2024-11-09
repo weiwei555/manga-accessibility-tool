@@ -71,16 +71,19 @@ async function handleImage(file) {
 }
 
 async function generateDescriptionWithHuggingFace(imageBlob) {
-   const apiUrl = "https://api-inference.huggingface.co/models/nlpconnect/vit-gpt2-image-captioning";
+   const apiUrl = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base";
    const apiKey = "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"; // Replace with your Hugging Face API key
 
    const base64Image = await blobToBase64(imageBlob);
 
    const payload = {
-      inputs: base64Image,
+      inputs: {
+         image: base64Image,
+         do_sample: false,
+      },
       options: {
-         wait_for_model: true
-      }
+         wait_for_model: true,
+      },
    };
 
    try {
@@ -88,9 +91,9 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
          method: "POST",
          headers: {
             "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
          },
-         body: JSON.stringify(payload)
+         body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -102,8 +105,8 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
       const data = await response.json();
       console.log("API response:", data);
 
-      // The response is an array of objects with 'generated_text' property
-      return data[0]?.generated_text || "No description generated";
+      // The response contains 'generated_text' or 'caption'
+      return data.caption || data[0]?.generated_text || "No description generated";
    } catch (error) {
       console.error("Error generating description:", error);
       return "Failed to generate description. Please try again.";
@@ -220,9 +223,25 @@ function segmentPanels(imageBlob) {
             return;
          }
 
+         // **Sort the contours from top-left to bottom-right**
+         validContours.sort((a, b) => {
+            // Calculate the center of each rectangle
+            const aCenterX = a.rect.x + a.rect.width / 2;
+            const aCenterY = a.rect.y + a.rect.height / 2;
+            const bCenterX = b.rect.x + b.rect.width / 2;
+            const bCenterY = b.rect.y + b.rect.height / 2;
+
+            // First sort by Y (rows), then by X (columns)
+            if (Math.abs(aCenterY - bCenterY) > 50) { // Adjust threshold as needed
+               return aCenterY - bCenterY;
+            } else {
+               return aCenterX - bCenterX;
+            }
+         });
+
          let processedPanels = 0;
 
-         // Now process the valid panels
+         // Now process the sorted panels
          for (let i = 0; i < validContours.length; ++i) {
             const cnt = validContours[i].contour;
             const rect = validContours[i].rect;
