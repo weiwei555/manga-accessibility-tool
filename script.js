@@ -47,20 +47,17 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
    const apiKey = "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"; // Replace this with your Hugging Face API key
 
    try {
-      const formData = new FormData();
-      formData.append('file', imageBlob);
-
       const response = await fetch(apiUrl, {
          method: "POST",
          headers: {
-            "Authorization": `Bearer ${apiKey}`
-            // Note: Do not set 'Content-Type' header when using FormData
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": imageBlob.type  // e.g., 'image/png' or 'image/jpeg'
          },
-         body: formData
+         body: imageBlob
       });
 
       if (!response.ok) {
-         const errorData = await response.json();
+         const errorData = await response.text();
          console.error("Error response from API:", errorData);
          return "Error: Unable to generate description. Check your API key or permissions.";
       }
@@ -119,7 +116,9 @@ function createPreprocessedImage(imageBlob) {
          ctx.putImageData(imageData, 0, 0);
 
          // Convert canvas to a blob and resolve
-         canvas.toBlob(resolve);
+         canvas.toBlob((blob) => {
+            resolve(blob);
+         }, imageBlob.type);
       };
 
       img.onerror = reject;
