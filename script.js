@@ -46,19 +46,17 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
    const apiUrl = "https://api-inference.huggingface.co/models/nlpconnect/vit-gpt2-image-captioning";
    const apiKey = "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"; // Replace this with your Hugging Face API key
 
-   // Convert imageBlob to base64
-   const base64Image = await blobToBase64(imageBlob);
-
    try {
+      const formData = new FormData();
+      formData.append('file', imageBlob);
+
       const response = await fetch(apiUrl, {
          method: "POST",
          headers: {
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json"
+            "Authorization": `Bearer ${apiKey}`
+            // Note: Do not set 'Content-Type' header when using FormData
          },
-         body: JSON.stringify({
-            inputs: base64Image
-         })
+         body: formData
       });
 
       if (!response.ok) {
@@ -102,25 +100,22 @@ function createPreprocessedImage(imageBlob) {
          // Draw the scaled image on the canvas
          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-         // Get image data for processing
+         // Convert the image to grayscale
          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
          const data = imageData.data;
 
-         // Binarize the image by setting pixels to black or white
+         // Grayscale conversion
          for (let i = 0; i < data.length; i += 4) {
             const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-            // Set pixel to black or white based on threshold
-            const threshold = 128;
-            if (avg < threshold) {
-               data[i] = 0; // R
-               data[i + 1] = 0; // G
-               data[i + 2] = 0; // B
-            } else {
-               data[i] = 255; // R
-               data[i + 1] = 255; // G
-               data[i + 2] = 255; // B
-            }
+            data[i] = data[i + 1] = data[i + 2] = avg;
          }
+
+         // Apply adaptive threshold
+         for (let i = 0; i < data.length; i += 4) {
+            const value = data[i];
+            data[i] = data[i + 1] = data[i + 2] = value > 200 ? 255 : 0;
+         }
+
          ctx.putImageData(imageData, 0, 0);
 
          // Convert canvas to a blob and resolve
@@ -128,15 +123,5 @@ function createPreprocessedImage(imageBlob) {
       };
 
       img.onerror = reject;
-   });
-}
-
-// Helper function to convert Blob to base64
-function blobToBase64(blob) {
-   return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result.split(",")[1]);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
    });
 }
