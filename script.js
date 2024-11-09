@@ -12,6 +12,7 @@ function setMode(mode) {
 
 async function handleFileUpload(event) {
    const files = event.target.files;
+   document.getElementById("manga-page-container").innerHTML = ""; // Clear previous images
    for (let file of files) {
       if (file.type.startsWith("image/")) {
          await handleImage(file);
@@ -72,7 +73,7 @@ async function handleImage(file) {
 
 async function generateDescriptionWithHuggingFace(imageBlob) {
    const apiUrl = "https://api-inference.huggingface.co/models/nlpconnect/vit-gpt2-image-captioning";
-   const apiKey = "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"; // Replace with your Hugging Face API key
+   const apiKey = "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"; 
 
    // Get the base64-encoded image without the data URL prefix
    const base64Image = await blobToBase64(imageBlob);
@@ -93,7 +94,7 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
       const response = await fetch(apiUrl, {
          method: "POST",
          headers: {
-            "Authorization": Bearer ${apiKey},
+            "Authorization": `Bearer ${apiKey}`, // Fixed syntax
             "Content-Type": "application/json",
          },
          body: JSON.stringify(payload),
@@ -270,7 +271,11 @@ function segmentPanels(imageBlob) {
 
             // Convert panel canvas to blob
             panelCanvas.toBlob((blob) => {
-               panels.push(blob);
+               if (blob) {
+                  panels.push(blob);
+               } else {
+                  console.error("Failed to convert canvas to blob");
+               }
                processedPanels++;
                if (processedPanels === validContours.length) {
                   // Clean up
