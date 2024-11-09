@@ -71,19 +71,14 @@ async function handleImage(file) {
 }
 
 async function generateDescriptionWithHuggingFace(imageBlob) {
-   const apiUrl = "https://api-inference.huggingface.co/models/Salesforce/blip2-flan-t5-base";
+   const apiUrl = "https://api-inference.huggingface.co/models/microsoft/trocr-base-handwritten";
    const apiKey = "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"; // Replace with your Hugging Face API key
 
    // Get the base64-encoded image without the data URL prefix
    const base64Image = await blobToBase64(imageBlob);
 
-   const prompt = "Describe this manga panel in detail, including characters, actions, emotions, and any text.";
-
    const payload = {
-      inputs: {
-         image: base64Image,
-         text: prompt,
-      },
+      inputs: base64Image,
       options: {
          wait_for_model: true,
       },
@@ -108,13 +103,14 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
       const data = await response.json();
       console.log("API response:", data);
 
-      // Extract the generated text
-      return data.generated_text || data[0]?.generated_text || "No description generated";
+      // Extract the recognized text
+      return data[0]?.text || "No text recognized";
    } catch (error) {
       console.error("Error generating description:", error);
       return "Failed to generate description. Please try again.";
    }
 }
+
 
 // Helper function to convert Blob to base64
 function blobToBase64(blob) {
