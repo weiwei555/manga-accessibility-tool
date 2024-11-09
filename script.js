@@ -77,8 +77,13 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
    // Get the base64-encoded image without the data URL prefix
    const base64Image = await blobToBase64(imageBlob);
 
+   const prompt = "Describe this manga panel in detail, including characters, actions, emotions, and any text.";
+
    const payload = {
-      inputs: base64Image,
+      inputs: {
+         image: base64Image,
+         text: prompt,
+      },
       options: {
          wait_for_model: true,
       },
@@ -88,7 +93,7 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
       const response = await fetch(apiUrl, {
          method: "POST",
          headers: {
-            "Authorization": `Bearer ${apiKey}`,
+            "Authorization": Bearer ${apiKey},
             "Content-Type": "application/json",
          },
          body: JSON.stringify(payload),
@@ -103,14 +108,13 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
       const data = await response.json();
       console.log("API response:", data);
 
-      // Extract the recognized text
-      return data[0]?.text || "No text recognized";
+      // Extract the generated text
+      return data.generated_text || data[0]?.generated_text || "No description generated";
    } catch (error) {
       console.error("Error generating description:", error);
       return "Failed to generate description. Please try again.";
    }
 }
-
 
 // Helper function to convert Blob to base64
 function blobToBase64(blob) {
