@@ -22,54 +22,76 @@ async function handleFileUpload(event) {
 }
 
 async function handleImage(file) {
-   const img = document.createElement("img");
-   img.src = URL.createObjectURL(file);
-   img.alt = "Manga page";
-   document.getElementById("manga-page-container").appendChild(img);
+   // Segment the panels
+   const panels = await segmentPanels(file);
 
-   // Generate image description with Hugging Face
-   const description = await generateDescriptionWithHuggingFace(file);
+   for (const panelBlob of panels) {
+      // Generate image description with Hugging Face
+      const description = await generateDescriptionWithHuggingFace(panelBlob);
 
-   // Preprocess and extract text with Tesseract.js
-   const ocrText = await extractTextWithOCR(file);
+      // Preprocess and extract text with Tesseract.js
+      const ocrText = await extractTextWithOCR(panelBlob);
 
-   // Combine the description and OCR text
-   const combinedDescription = `${description}\nDialog: ${ocrText}`;
+      // Combine the description and OCR text
+      const combinedDescription = `${description}\nDialog: ${ocrText}`;
 
-   // Display the description
-   const descriptionElement = document.createElement("p");
-   descriptionElement.textContent = combinedDescription;
-   document.getElementById("description-text").appendChild(descriptionElement);
+      // Display the description
+      const descriptionElement = document.createElement("p");
+      descriptionElement.textContent = combinedDescription;
+      document.getElementById("description-text").appendChild(descriptionElement);
+   }
 }
 
 async function generateDescriptionWithHuggingFace(imageBlob) {
-   const apiUrl = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base";
-   const apiKey = "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"; // Replace this with your Hugging Face API key
+   const apiUrl = "https://api-inference.huggingface.co/models/Salesforce/blip2-flan-t5-xl";
+   const apiKey = "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"; // Replace with your Hugging Face API key
+
+   const base64Image = await blobToBase64(imageBlob);
+
+   const payload = {
+      inputs: {
+         image: base64Image,
+         text: "Describe in detail the manga panel, including the characters' appearances, actions, emotions, and any visible text."
+      },
+      options: {
+         wait_for_model: true
+      }
+   };
 
    try {
       const response = await fetch(apiUrl, {
          method: "POST",
          headers: {
             "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": imageBlob.type // e.g., 'image/png' or 'image/jpeg'
+            "Content-Type": "application/json"
          },
-         body: imageBlob
+         body: JSON.stringify(payload)
       });
 
       if (!response.ok) {
          const errorData = await response.text();
          console.error("Error response from API:", errorData);
-         return "Error: Unable to generate description. Check your API key or permissions.";
+         return "Error: Unable to generate description.";
       }
 
       const data = await response.json();
-      console.log("API response:", data); // Log the response for debugging
+      console.log("API response:", data);
 
-      return data[0]?.generated_text || "No description generated";
+      return data.generated_text || "No description generated";
    } catch (error) {
       console.error("Error generating description:", error);
       return "Failed to generate description. Please try again.";
    }
+}
+
+// Helper function to convert Blob to base64
+function blobToBase64(blob) {
+   return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+   });
 }
 
 async function extractTextWithOCR(imageBlob) {
@@ -89,32 +111,24 @@ function createPreprocessedImage(imageBlob) {
 
       img.onload = () => {
          const canvas = document.createElement("canvas");
-         const scaleFactor = 2; // Increase resolution by scaling
+         const scaleFactor = 2;
          canvas.width = img.width * scaleFactor;
          canvas.height = img.height * scaleFactor;
          const ctx = canvas.getContext("2d");
 
-         // Draw the scaled image on the canvas
          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-         // Convert the image to grayscale
-         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-         const data = imageData.data;
+         // Convert to grayscale and apply thresholding
+         let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+         let data = imageData.data;
 
-         // Grayscale conversion
          for (let i = 0; i < data.length; i += 4) {
             const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-            data[i] = data[i + 1] = data[i + 2] = avg;
-         }
-
-         // Apply adaptive thresholding
-         for (let i = 0; i < data.length; i += 4) {
-            data[i] = data[i + 1] = data[i + 2] = data[i] > 180 ? 255 : 0;
+            data[i] = data[i + 1] = data[i + 2] = avg > 180 ? 255 : 0;
          }
 
          ctx.putImageData(imageData, 0, 0);
 
-         // Convert canvas to a blob and resolve
          canvas.toBlob((blob) => {
             resolve(blob);
          }, imageBlob.type);
