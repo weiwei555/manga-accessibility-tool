@@ -74,14 +74,15 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
    const apiUrl = "https://api-inference.huggingface.co/models/microsoft/git-large-coco";
    const apiKey = "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"; // Replace with your Hugging Face API key
 
-   const base64Image = await blobToBase64(imageBlob);
+   // Use the updated function to get the full data URL
+   const dataURL = await blobToDataURL(imageBlob);
 
    const prompt = "Describe this manga panel in detail, including characters, actions, emotions, and any text.";
 
    const payload = {
       inputs: [
          {
-            image: base64Image,
+            image: dataURL,
             text: prompt
          }
       ],
@@ -117,14 +118,12 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
    }
 }
 
-// Helper function to convert Blob to base64
-function blobToBase64(blob) {
+// Updated function to return the full data URL
+function blobToDataURL(blob) {
    return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => {
-         // Remove the data URL prefix to get just the base64-encoded string
-         const base64String = reader.result.split(',')[1];
-         resolve(base64String);
+         resolve(reader.result); // The full data URL
       };
       reader.onerror = reject;
       reader.readAsDataURL(blob);
