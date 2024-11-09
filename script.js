@@ -74,24 +74,17 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
    const apiUrl = "https://api-inference.huggingface.co/models/michelecafagna26/clipcap-base-captioning-ft-hl-scenes";
    const apiKey = "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"; // Replace with your Hugging Face API key
 
-   // Get the base64-encoded image without the data URL prefix
-   const base64Image = await blobToBase64(imageBlob);
-
-   const payload = {
-      inputs: base64Image,
-      options: {
-         wait_for_model: true,
-      },
-   };
+   const formData = new FormData();
+   formData.append('image', imageBlob, 'image.jpg'); // Append the image blob with a filename
 
    try {
       const response = await fetch(apiUrl, {
          method: "POST",
          headers: {
             "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
+            // Do not set 'Content-Type' header when sending FormData
          },
-         body: JSON.stringify(payload),
+         body: formData,
       });
 
       if (!response.ok) {
@@ -103,28 +96,15 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
       const data = await response.json();
       console.log("API response:", data);
 
-      // The response is an array of objects with 'generated_text' property
-      return data[0]?.generated_text || "No description generated";
+      // The response might be an array or object, adjust accordingly
+      return data[0]?.generated_text || data.generated_text || "No description generated";
    } catch (error) {
       console.error("Error generating description:", error);
       return "Failed to generate description. Please try again.";
    }
 }
 
-// Helper function to convert Blob to base64
-function blobToBase64(blob) {
-   return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-         // Remove the data URL prefix to get just the base64-encoded string
-         const base64String = reader.result.split(',')[1];
-         resolve(base64String);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-   });
-}
-
+// Helper function to extract text with Tesseract.js
 async function extractTextWithOCR(imageBlob) {
    // Pre-process image using a canvas for better OCR results
    const processedImage = await createPreprocessedImage(imageBlob);
@@ -240,4 +220,42 @@ function segmentPanels(imageBlob) {
          let processedPanels = 0;
 
          // Now process the sorted panels
-         for (let i = 0; i < validContours.length;
+         for (let i = 0; i < validContours.length; ++i) {
+            const cnt = validContours[i].contour;
+            const rect = validContours[i].rect;
+
+            // Extract panel image
+            const panelCanvas = document.createElement("canvas");
+            panelCanvas.width = rect.width;
+            panelCanvas.height = rect.height;
+            const panelCtx = panelCanvas.getContext("2d");
+            panelCtx.drawImage(
+               img,
+               rect.x,
+               rect.y,
+               rect.width,
+               rect.height,
+               0,
+               0,
+               rect.width,
+               rect.height
+            );
+
+            cnt.delete(); // Delete the contour after use
+
+            // Convert panel canvas to blob
+            panelCanvas.toBlob((blob) => {
+               panels.push(blob);
+               processedPanels++;
+               if (processedPanels === validContours.length) {
+                  // Clean up
+                  src.delete(); gray.delete(); thresh.delete(); contours.delete(); hierarchy.delete();
+                  resolve(panels);
+               }
+            }, imageBlob.type);
+         }
+      };
+
+      img.onerror = reject;
+   });
+}
