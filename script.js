@@ -44,7 +44,7 @@ async function handleImage(file) {
 
 async function generateDescriptionWithHuggingFace(imageBlob) {
    const apiUrl = "https://api-inference.huggingface.co/models/Salesforce/blip2-flan-t5-xl";
-   const apiKey = "your-api-key"; // Replace with your Hugging Face API key
+   const apiKey = "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"; // Replace with your Hugging Face API key
 
    const base64Image = await blobToBase64(imageBlob);
 
