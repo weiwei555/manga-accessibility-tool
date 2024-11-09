@@ -71,7 +71,7 @@ async function handleImage(file) {
 }
 
 async function generateDescriptionWithHuggingFace(imageBlob) {
-   const apiUrl = "https://api-inference.huggingface.co/models/nlpconnect/vit-gpt2-image-captioning";
+   const apiUrl = "https://api-inference.huggingface.co/models/michelecafagna26/clipcap-base-captioning-ft-hl-scenes";
    const apiKey = "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"; // Replace with your Hugging Face API key
 
    // Get the base64-encoded image without the data URL prefix
@@ -240,42 +240,4 @@ function segmentPanels(imageBlob) {
          let processedPanels = 0;
 
          // Now process the sorted panels
-         for (let i = 0; i < validContours.length; ++i) {
-            const cnt = validContours[i].contour;
-            const rect = validContours[i].rect;
-
-            // Extract panel image
-            const panelCanvas = document.createElement("canvas");
-            panelCanvas.width = rect.width;
-            panelCanvas.height = rect.height;
-            const panelCtx = panelCanvas.getContext("2d");
-            panelCtx.drawImage(
-               img,
-               rect.x,
-               rect.y,
-               rect.width,
-               rect.height,
-               0,
-               0,
-               rect.width,
-               rect.height
-            );
-
-            cnt.delete(); // Delete the contour after use
-
-            // Convert panel canvas to blob
-            panelCanvas.toBlob((blob) => {
-               panels.push(blob);
-               processedPanels++;
-               if (processedPanels === validContours.length) {
-                  // Clean up
-                  src.delete(); gray.delete(); thresh.delete(); contours.delete(); hierarchy.delete();
-                  resolve(panels);
-               }
-            }, imageBlob.type);
-         }
-      };
-
-      img.onerror = reject;
-   });
-}
+         for (let i = 0; i < validContours.length;
