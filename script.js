@@ -71,14 +71,19 @@ async function handleImage(file) {
 }
 
 async function generateDescriptionWithHuggingFace(imageBlob) {
-   const apiUrl = "https://api-inference.huggingface.co/models/michelecafagna26/clipcap-base-captioning-ft-hl-scenes";
+   const apiUrl = "https://api-inference.huggingface.co/models/Salesforce/blip2-flan-t5-base";
    const apiKey = "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"; // Replace with your Hugging Face API key
 
    // Get the base64-encoded image without the data URL prefix
    const base64Image = await blobToBase64(imageBlob);
 
+   const prompt = "Describe this manga panel in detail, including characters, actions, emotions, and any text.";
+
    const payload = {
-      inputs: base64Image,
+      inputs: {
+         image: base64Image,
+         text: prompt,
+      },
       options: {
          wait_for_model: true,
       },
@@ -103,8 +108,8 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
       const data = await response.json();
       console.log("API response:", data);
 
-      // The response is an array of objects with 'generated_text' property
-      return data[0]?.generated_text || "No description generated";
+      // Extract the generated text
+      return data.generated_text || data[0]?.generated_text || "No description generated";
    } catch (error) {
       console.error("Error generating description:", error);
       return "Failed to generate description. Please try again.";
