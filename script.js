@@ -34,7 +34,11 @@ async function handleImage(file) {
 
     console.log("Number of panels found:", panels.length);
 
+    let panelIndex = 0;
+
     for (const panelBlob of panels) {
+      panelIndex++;
+
       // Create a container div for panel and description
       const panelContainer = document.createElement("div");
       panelContainer.classList.add("panel-container");
@@ -42,10 +46,15 @@ async function handleImage(file) {
       // Display each panel
       const panelImg = document.createElement("img");
       panelImg.src = URL.createObjectURL(panelBlob);
-      panelImg.alt = "Manga panel";
+      panelImg.alt = `Manga panel ${panelIndex}`;
       panelContainer.appendChild(panelImg);
 
       console.log("Panel image displayed");
+
+      // Add panel number as secondary header
+      const panelHeader = document.createElement("h3");
+      panelHeader.textContent = `Panel ${panelIndex}:`;
+      panelContainer.appendChild(panelHeader);
 
       // Generate image description with Hugging Face
       const description = await generateDescriptionWithHuggingFace(panelBlob);
@@ -57,8 +66,8 @@ async function handleImage(file) {
 
       console.log("OCR texts extracted:", ocrTexts);
 
-      // Combine the description and OCR texts
-      const combinedDescription = `${description}\nDialog:\n${ocrTexts.join('\n')}`;
+      // Combine the description and OCR texts with an extra newline
+      const combinedDescription = `${description}\n\nDialog:\n${ocrTexts.join('\n')}`;
 
       // Display the description
       const descriptionElement = document.createElement("p");
