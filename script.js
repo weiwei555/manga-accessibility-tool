@@ -71,21 +71,14 @@ async function handleImage(file) {
 }
 
 async function generateDescriptionWithHuggingFace(imageBlob) {
-   const apiUrl = "https://api-inference.huggingface.co/models/microsoft/git-large-coco";
+   const apiUrl = "https://api-inference.huggingface.co/models/nlpconnect/vit-gpt2-image-captioning";
    const apiKey = "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"; // Replace with your Hugging Face API key
 
-   // Use the updated function to get the full data URL
-   const dataURL = await blobToDataURL(imageBlob);
-
-   const prompt = "Describe this manga panel in detail, including characters, actions, emotions, and any text.";
+   // Get the base64-encoded image without the data URL prefix
+   const base64Image = await blobToBase64(imageBlob);
 
    const payload = {
-      inputs: [
-         {
-            image: dataURL,
-            text: prompt
-         }
-      ],
+      inputs: base64Image,
       options: {
          wait_for_model: true,
       },
@@ -110,20 +103,22 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
       const data = await response.json();
       console.log("API response:", data);
 
-      // The response may contain 'generated_text'
-      return data.generated_text || data[0]?.generated_text || "No description generated";
+      // The response is an array of objects with 'generated_text' property
+      return data[0]?.generated_text || "No description generated";
    } catch (error) {
       console.error("Error generating description:", error);
       return "Failed to generate description. Please try again.";
    }
 }
 
-// Updated function to return the full data URL
-function blobToDataURL(blob) {
+// Helper function to convert Blob to base64
+function blobToBase64(blob) {
    return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => {
-         resolve(reader.result); // The full data URL
+         // Remove the data URL prefix to get just the base64-encoded string
+         const base64String = reader.result.split(',')[1];
+         resolve(base64String);
       };
       reader.onerror = reject;
       reader.readAsDataURL(blob);
