@@ -1,3 +1,5 @@
+// script.ts
+
 document.getElementById("manga-upload").addEventListener("change", handleFileUpload);
 
 function setMode(mode) {
@@ -166,26 +168,22 @@ function detectSpeechBubbles(panelImage) {
       // Convert to grayscale
       cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
 
-      // Apply median blur to reduce noise
-      cv.medianBlur(gray, gray, 5);
+      // Invert colors to make speech bubbles white
+      cv.bitwise_not(gray, gray);
 
-      // Apply adaptive thresholding
-      cv.adaptiveThreshold(
-        gray,
-        thresh,
-        255,
-        cv.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv.THRESH_BINARY_INV,
-        11,
-        2
-      );
+      // Apply binary threshold
+      cv.threshold(gray, thresh, 180, 255, cv.THRESH_BINARY);
+
+      // Apply morphological operations to reduce noise and connect components
+      let kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(5, 5));
+      cv.morphologyEx(thresh, thresh, cv.MORPH_OPEN, kernel);
 
       // Find contours
       cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
       const bubbles = [];
-      const minArea = 500; // Minimum area to be considered a speech bubble
-      const maxArea = (img.width * img.height) / 2; // Max area to filter out large regions
+      const minArea = 1000; // Adjust based on expected speech bubble size
+      const maxArea = (img.width * img.height) / 2;
 
       for (let i = 0; i < contours.size(); ++i) {
         const cnt = contours.get(i);
@@ -193,8 +191,19 @@ function detectSpeechBubbles(panelImage) {
         const aspectRatio = rect.width / rect.height;
         const area = cv.contourArea(cnt);
 
-        // Filter based on area and aspect ratio
-        if (area > minArea && area < maxArea && aspectRatio > 0.5 && aspectRatio < 1.5) {
+        // Approximate the contour to reduce the number of points
+        let approx = new cv.Mat();
+        cv.approxPolyDP(cnt, approx, 0.02 * cv.arcLength(cnt, true), true);
+
+        // Filter contours likely to be speech bubbles
+        if (
+          area > minArea &&
+          area < maxArea &&
+          aspectRatio > 0.3 &&
+          aspectRatio < 1.7 &&
+          approx.rows >= 4 &&
+          approx.rows <= 10
+        ) {
           // Potential speech bubble
           const bubbleCanvas = document.createElement("canvas");
           bubbleCanvas.width = rect.width;
@@ -214,6 +223,7 @@ function detectSpeechBubbles(panelImage) {
           bubbles.push(bubbleCanvas);
         }
         cnt.delete();
+        approx.delete();
       }
 
       // Clean up
@@ -222,6 +232,7 @@ function detectSpeechBubbles(panelImage) {
       thresh.delete();
       contours.delete();
       hierarchy.delete();
+      kernel.delete();
 
       resolve(bubbles);
     };
@@ -255,6 +266,10 @@ function segmentPanels(imageBlob) {
       // Apply binary threshold
       cv.threshold(gray, thresh, 200, 255, cv.THRESH_BINARY_INV);
 
+      // Dilate to connect nearby components
+      let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
+      cv.dilate(thresh, thresh, kernel);
+
       // Find contours
       cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
@@ -262,7 +277,7 @@ function segmentPanels(imageBlob) {
       const totalContours = contours.size();
       let validContours = [];
 
-      // First, collect valid contours
+      // Collect valid contours
       for (let i = 0; i < totalContours; ++i) {
         const cnt = contours.get(i);
         const rect = cv.boundingRect(cnt);
@@ -282,21 +297,19 @@ function segmentPanels(imageBlob) {
         thresh.delete();
         contours.delete();
         hierarchy.delete();
+        kernel.delete();
         resolve([imageBlob]); // Return the whole image as one panel
         return;
       }
 
       // Sort the contours from top-left to bottom-right
       validContours.sort((a, b) => {
-        // Calculate the center of each rectangle
         const aCenterX = a.rect.x + a.rect.width / 2;
         const aCenterY = a.rect.y + a.rect.height / 2;
         const bCenterX = b.rect.x + b.rect.width / 2;
         const bCenterY = b.rect.y + b.rect.height / 2;
 
-        // First sort by Y (rows), then by X (columns)
         if (Math.abs(aCenterY - bCenterY) > 50) {
-          // Adjust threshold as needed
           return aCenterY - bCenterY;
         } else {
           return aCenterX - bCenterX;
@@ -305,7 +318,7 @@ function segmentPanels(imageBlob) {
 
       let processedPanels = 0;
 
-      // Now process the sorted panels
+      // Process the sorted panels
       for (let i = 0; i < validContours.length; ++i) {
         const cnt = validContours[i].contour;
         const rect = validContours[i].rect;
@@ -345,6 +358,7 @@ function segmentPanels(imageBlob) {
               thresh.delete();
               contours.delete();
               hierarchy.delete();
+              kernel.delete();
               resolve(panels);
             }
           },
