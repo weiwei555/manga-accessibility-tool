@@ -71,7 +71,7 @@ async function handleImage(file) {
 }
 
 async function generateDescriptionWithHuggingFace(imageBlob) {
-   const apiUrl = "https://api-inference.huggingface.co/models/Salesforce/blip2-flan-t5-xl";
+   const apiUrl = "https://api-inference.huggingface.co/models/microsoft/git-large-coco";
    const apiKey = "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"; // Replace with your Hugging Face API key
 
    const base64Image = await blobToBase64(imageBlob);
@@ -79,10 +79,12 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
    const prompt = "Describe this manga panel in detail, including characters, actions, emotions, and any text.";
 
    const payload = {
-      inputs: {
-         image: base64Image,
-         text: prompt
-      },
+      inputs: [
+         {
+            image: base64Image,
+            text: prompt
+         }
+      ],
       options: {
          wait_for_model: true,
       },
