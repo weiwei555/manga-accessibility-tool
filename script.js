@@ -43,7 +43,7 @@ async function handleImage(file) {
 }
 
 async function generateDescriptionWithHuggingFace(imageBlob) {
-   const apiUrl = "https://api-inference.huggingface.co/models/nlpconnect/vit-gpt2-image-captioning";
+   const apiUrl = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base";
    const apiKey = "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"; // Replace this with your Hugging Face API key
 
    try {
@@ -51,7 +51,7 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
          method: "POST",
          headers: {
             "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": imageBlob.type  // e.g., 'image/png' or 'image/jpeg'
+            "Content-Type": imageBlob.type // e.g., 'image/png' or 'image/jpeg'
          },
          body: imageBlob
       });
@@ -65,7 +65,7 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
       const data = await response.json();
       console.log("API response:", data); // Log the response for debugging
 
-      return data[0].generated_text || "No description generated";
+      return data[0]?.generated_text || "No description generated";
    } catch (error) {
       console.error("Error generating description:", error);
       return "Failed to generate description. Please try again.";
@@ -107,10 +107,9 @@ function createPreprocessedImage(imageBlob) {
             data[i] = data[i + 1] = data[i + 2] = avg;
          }
 
-         // Apply adaptive threshold
+         // Apply adaptive thresholding
          for (let i = 0; i < data.length; i += 4) {
-            const value = data[i];
-            data[i] = data[i + 1] = data[i + 2] = value > 200 ? 255 : 0;
+            data[i] = data[i + 1] = data[i + 2] = data[i] > 180 ? 255 : 0;
          }
 
          ctx.putImageData(imageData, 0, 0);
