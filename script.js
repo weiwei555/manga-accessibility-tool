@@ -11,13 +11,6 @@ function setMode(mode) {
 }
 
 async function handleFileUpload(event) {
-   // Wait for OpenCV.js to be initialized
-   if (typeof cv === 'undefined' || !cv['onRuntimeInitialized']) {
-      await new Promise((resolve) => {
-         cv['onRuntimeInitialized'] = resolve;
-      });
-   }
-
    const files = event.target.files;
    for (let file of files) {
       if (file.type.startsWith("image/")) {
@@ -29,14 +22,20 @@ async function handleFileUpload(event) {
 }
 
 async function handleImage(file) {
+   console.log("Processing image file:", file.name);
+
    // Display the original image
    const img = document.createElement("img");
    img.src = URL.createObjectURL(file);
    img.alt = "Manga page";
    document.getElementById("manga-page-container").appendChild(img);
 
+   console.log("Original image displayed");
+
    // Segment the panels
    const panels = await segmentPanels(file);
+
+   console.log("Number of panels found:", panels.length);
 
    for (const panelBlob of panels) {
       // Display each panel
@@ -45,11 +44,17 @@ async function handleImage(file) {
       panelImg.alt = "Manga panel";
       document.getElementById("manga-page-container").appendChild(panelImg);
 
+      console.log("Panel image displayed");
+
       // Generate image description with Hugging Face
       const description = await generateDescriptionWithHuggingFace(panelBlob);
 
+      console.log("Description generated:", description);
+
       // Preprocess and extract text with Tesseract.js
       const ocrText = await extractTextWithOCR(panelBlob);
+
+      console.log("OCR text extracted:", ocrText);
 
       // Combine the description and OCR text
       const combinedDescription = `${description}\nDialog: ${ocrText}`;
@@ -96,7 +101,7 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
       const data = await response.json();
       console.log("API response:", data);
 
-      return data.generated_text || "No description generated";
+      return data.generated_text || data[0]?.generated_text || "No description generated";
    } catch (error) {
       console.error("Error generating description:", error);
       return "Failed to generate description. Please try again.";
@@ -107,7 +112,7 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
 function blobToBase64(blob) {
    return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result);
+      reader.onloadend = () => resolve(reader.result.split(',')[1]);
       reader.onerror = reject;
       reader.readAsDataURL(blob);
    });
@@ -187,21 +192,21 @@ function segmentPanels(imageBlob) {
 
          const panels = [];
          const totalContours = contours.size();
-         let validPanels = 0;
-         let processedPanels = 0;
+         let validContours = [];
 
-         // First, count the number of valid panels
+         // First, collect valid contours
          for (let i = 0; i < totalContours; ++i) {
             const cnt = contours.get(i);
             const rect = cv.boundingRect(cnt);
             // Filter out small areas
             if (rect.width * rect.height >= 10000) {
-               validPanels++;
+               validContours.push({ contour: cnt, rect: rect });
+            } else {
+               cnt.delete(); // Delete small contours
             }
-            cnt.delete(); // Delete the contour after use
          }
 
-         if (validPanels === 0) {
+         if (validContours.length === 0) {
             // No valid panels found
             // Clean up
             src.delete(); gray.delete(); thresh.delete(); contours.delete(); hierarchy.delete();
@@ -209,16 +214,12 @@ function segmentPanels(imageBlob) {
             return;
          }
 
-         // Now process the valid panels
-         for (let i = 0; i < totalContours; ++i) {
-            const cnt = contours.get(i);
-            const rect = cv.boundingRect(cnt);
+         let processedPanels = 0;
 
-            // Filter out small areas
-            if (rect.width * rect.height < 10000) {
-               cnt.delete();
-               continue;
-            }
+         // Now process the valid panels
+         for (let i = 0; i < validContours.length; ++i) {
+            const cnt = validContours[i].contour;
+            const rect = validContours[i].rect;
 
             // Extract panel image
             const panelCanvas = document.createElement("canvas");
@@ -243,7 +244,7 @@ function segmentPanels(imageBlob) {
             panelCanvas.toBlob((blob) => {
                panels.push(blob);
                processedPanels++;
-               if (processedPanels === validPanels) {
+               if (processedPanels === validContours.length) {
                   // Clean up
                   src.delete(); gray.delete(); thresh.delete(); contours.delete(); hierarchy.delete();
                   resolve(panels);
