@@ -1,19 +1,8 @@
 document.getElementById("manga-upload").addEventListener("change", handleFileUpload);
 
-function setMode(mode) {
-  const descriptionText = document.getElementById("description-text");
-
-  if (mode === "panel") {
-    descriptionText.innerHTML = "Panel-by-Panel mode selected.";
-  } else if (mode === "summary") {
-    descriptionText.innerHTML = "Page Summary mode selected.";
-  }
-}
-
 async function handleFileUpload(event) {
   const files = event.target.files;
   document.getElementById("manga-page-container").innerHTML = ""; // Clear previous images
-  document.getElementById("description-text").innerHTML = ""; // Clear previous descriptions
   for (let file of files) {
     if (file.type.startsWith("image/")) {
       await handleImage(file);
@@ -34,6 +23,11 @@ async function handleImage(file) {
 
   console.log("Original image displayed");
 
+  // Add a heading for the panels
+  const panelHeading = document.createElement("h2");
+  panelHeading.textContent = "Page By Panels:";
+  document.getElementById("manga-page-container").appendChild(panelHeading);
+
   try {
     // Segment the panels
     const panels = await segmentPanels(file);
@@ -41,11 +35,15 @@ async function handleImage(file) {
     console.log("Number of panels found:", panels.length);
 
     for (const panelBlob of panels) {
+      // Create a container div for panel and description
+      const panelContainer = document.createElement("div");
+      panelContainer.classList.add("panel-container");
+
       // Display each panel
       const panelImg = document.createElement("img");
       panelImg.src = URL.createObjectURL(panelBlob);
       panelImg.alt = "Manga panel";
-      document.getElementById("manga-page-container").appendChild(panelImg);
+      panelContainer.appendChild(panelImg);
 
       console.log("Panel image displayed");
 
@@ -65,7 +63,10 @@ async function handleImage(file) {
       // Display the description
       const descriptionElement = document.createElement("p");
       descriptionElement.textContent = combinedDescription;
-      document.getElementById("description-text").appendChild(descriptionElement);
+      panelContainer.appendChild(descriptionElement);
+
+      // Append the panel container to the manga-page-container
+      document.getElementById("manga-page-container").appendChild(panelContainer);
     }
   } catch (error) {
     console.error("Error in handleImage:", error);
