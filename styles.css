@@ -3,6 +3,16 @@ body {
    text-align: center;
 }
 
+input[type="file"] {
+   font-size: 20px; /* Increased font size */
+   padding: 12px;   /* Increased padding */
+   margin: 20px 0;
+}
+
+#instructions {
+   margin-bottom: 20px;
+}
+
 #manga-page-container img {
    max-width: 80%;
    width: auto;
@@ -17,6 +27,11 @@ body {
    max-width: 80%;
    width: auto;
    margin: 10px auto;
+}
+
+.panel-container h3 {
+   font-size: 22px;
+   margin-top: 15px;
 }
 
 .panel-container p {
