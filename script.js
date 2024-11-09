@@ -71,20 +71,27 @@ async function handleImage(file) {
 }
 
 async function generateDescriptionWithHuggingFace(imageBlob) {
-   const apiUrl = "https://api-inference.huggingface.co/models/michelecafagna26/clipcap-base-captioning-ft-hl-scenes";
+   const apiUrl = "https://api-inference.huggingface.co/models/ydshieh/vit-gpt2-coco-en";
    const apiKey = "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"; // Replace with your Hugging Face API key
 
-   const formData = new FormData();
-   formData.append('image', imageBlob, 'image.jpg'); // Append the image blob with a filename
+   // Get the base64-encoded image without the data URL prefix
+   const base64Image = await blobToBase64(imageBlob);
+
+   const payload = {
+      inputs: base64Image,
+      options: {
+         wait_for_model: true,
+      },
+   };
 
    try {
       const response = await fetch(apiUrl, {
          method: "POST",
          headers: {
             "Authorization": `Bearer ${apiKey}`,
-            // Do not set 'Content-Type' header when sending FormData
+            "Content-Type": "application/json",
          },
-         body: formData,
+         body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -96,15 +103,28 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
       const data = await response.json();
       console.log("API response:", data);
 
-      // The response might be an array or object, adjust accordingly
-      return data[0]?.generated_text || data.generated_text || "No description generated";
+      // The response is an array of objects with 'generated_text' property
+      return data[0]?.generated_text || "No description generated";
    } catch (error) {
       console.error("Error generating description:", error);
       return "Failed to generate description. Please try again.";
    }
 }
 
-// Helper function to extract text with Tesseract.js
+// Helper function to convert Blob to base64
+function blobToBase64(blob) {
+   return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+         // Remove the data URL prefix to get just the base64-encoded string
+         const base64String = reader.result.split(',')[1];
+         resolve(base64String);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+   });
+}
+
 async function extractTextWithOCR(imageBlob) {
    // Pre-process image using a canvas for better OCR results
    const processedImage = await createPreprocessedImage(imageBlob);
