@@ -36,9 +36,9 @@ async function handleImage(file) {
    document.getElementById("description-text").appendChild(descriptionElement);
 }
 
-async function generateDescriptionWithOpenAI(imageBlob) {
-   const apiUrl = "https://api.openai.com/v1/chat/completions";
-   const apiKey = "nonono"; // Replace with your actual OpenAI API key
+async function generateDescriptionWithHuggingFace(imageBlob) {
+   const apiUrl = "https://api-inference.huggingface.co/models/nlpconnect/vit-gpt2-image-captioning";
+   const apiKey = "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"; // Replace this with your Hugging Face API key
 
    // Convert imageBlob to base64
    const base64Image = await blobToBase64(imageBlob);
@@ -51,11 +51,7 @@ async function generateDescriptionWithOpenAI(imageBlob) {
             "Content-Type": "application/json"
          },
          body: JSON.stringify({
-            model: "gpt-4",
-            messages: [
-               { role: "system", content: "You are an assistant that provides descriptions for images." },
-               { role: "user", content: `Describe this image: data:image/jpeg;base64,${base64Image}` }
-            ]
+            inputs: base64Image
          })
       });
 
@@ -68,7 +64,7 @@ async function generateDescriptionWithOpenAI(imageBlob) {
       const data = await response.json();
       console.log("API response:", data); // Log the response for debugging
 
-      return data.choices[0].message.content || "No description generated";
+      return data[0].generated_text || "No description generated";
    } catch (error) {
       console.error("Error generating description:", error);
       return "Failed to generate description. Please try again.";
