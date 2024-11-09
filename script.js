@@ -168,41 +168,43 @@ function detectSpeechBubbles(panelImage) {
       // Convert to grayscale
       cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
 
-      // Invert colors to make speech bubbles white
-      cv.bitwise_not(gray, gray);
+      // Apply Gaussian blur to reduce noise
+      cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
 
-      // Apply binary threshold
-      cv.threshold(gray, thresh, 180, 255, cv.THRESH_BINARY);
+      // Apply adaptive thresholding
+      cv.adaptiveThreshold(
+        gray,
+        thresh,
+        255,
+        cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv.THRESH_BINARY_INV,
+        11,
+        2
+      );
 
-      // Apply morphological operations to reduce noise and connect components
-      let kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(5, 5));
+      // Apply morphological operations
+      let kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3, 3));
       cv.morphologyEx(thresh, thresh, cv.MORPH_OPEN, kernel);
 
       // Find contours
       cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
       const bubbles = [];
-      const minArea = 1000; // Adjust based on expected speech bubble size
+      const minArea = 500; // Adjust based on expected bubble size
       const maxArea = (img.width * img.height) / 2;
 
       for (let i = 0; i < contours.size(); ++i) {
         const cnt = contours.get(i);
         const rect = cv.boundingRect(cnt);
-        const aspectRatio = rect.width / rect.height;
         const area = cv.contourArea(cnt);
-
-        // Approximate the contour to reduce the number of points
-        let approx = new cv.Mat();
-        cv.approxPolyDP(cnt, approx, 0.02 * cv.arcLength(cnt, true), true);
+        const aspectRatio = rect.width / rect.height;
 
         // Filter contours likely to be speech bubbles
         if (
           area > minArea &&
           area < maxArea &&
           aspectRatio > 0.3 &&
-          aspectRatio < 1.7 &&
-          approx.rows >= 4 &&
-          approx.rows <= 10
+          aspectRatio < 1.7
         ) {
           // Potential speech bubble
           const bubbleCanvas = document.createElement("canvas");
@@ -223,7 +225,6 @@ function detectSpeechBubbles(panelImage) {
           bubbles.push(bubbleCanvas);
         }
         cnt.delete();
-        approx.delete();
       }
 
       // Clean up
@@ -240,6 +241,7 @@ function detectSpeechBubbles(panelImage) {
     img.onerror = reject;
   });
 }
+
 
 function segmentPanels(imageBlob) {
   return new Promise((resolve, reject) => {
