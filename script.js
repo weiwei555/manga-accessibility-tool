@@ -44,7 +44,7 @@ async function handleImage(file) {
 
 async function generateDescriptionWithHuggingFace(imageBlob) {
    const apiUrl = "https://api-inference.huggingface.co/models/Salesforce/blip2-flan-t5-xl";
-   const apiKey = "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"; // Replace with your Hugging Face API key
+   const apiKey = "your-api-key"; // Replace with your Hugging Face API key
 
    const base64Image = await blobToBase64(imageBlob);
 
@@ -132,6 +132,81 @@ function createPreprocessedImage(imageBlob) {
          canvas.toBlob((blob) => {
             resolve(blob);
          }, imageBlob.type);
+      };
+
+      img.onerror = reject;
+   });
+}
+
+// Add the segmentPanels function
+function segmentPanels(imageBlob) {
+   return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.src = URL.createObjectURL(imageBlob);
+
+      img.onload = () => {
+         const canvas = document.createElement("canvas");
+         canvas.width = img.width;
+         canvas.height = img.height;
+         const ctx = canvas.getContext("2d");
+         ctx.drawImage(img, 0, 0);
+
+         // Convert canvas to OpenCV Mat
+         let src = cv.imread(canvas);
+         let gray = new cv.Mat();
+         let thresh = new cv.Mat();
+         let contours = new cv.MatVector();
+         let hierarchy = new cv.Mat();
+
+         // Convert to grayscale
+         cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
+
+         // Apply binary threshold
+         cv.threshold(gray, thresh, 200, 255, cv.THRESH_BINARY_INV);
+
+         // Find contours
+         cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+         const panels = [];
+
+         for (let i = 0; i < contours.size(); ++i) {
+            const cnt = contours.get(i);
+            const rect = cv.boundingRect(cnt);
+
+            // Filter out small areas
+            if (rect.width * rect.height < 10000) {
+               continue;
+            }
+
+            // Extract panel image
+            const panelCanvas = document.createElement("canvas");
+            panelCanvas.width = rect.width;
+            panelCanvas.height = rect.height;
+            const panelCtx = panelCanvas.getContext("2d");
+            panelCtx.drawImage(
+               img,
+               rect.x,
+               rect.y,
+               rect.width,
+               rect.height,
+               0,
+               0,
+               rect.width,
+               rect.height
+            );
+
+            // Convert panel canvas to blob
+            panelCanvas.toBlob((blob) => {
+               panels.push(blob);
+               // Resolve when all panels are processed
+               if (panels.length === contours.size()) {
+                  resolve(panels);
+               }
+            }, imageBlob.type);
+         }
+
+         // Clean up
+         src.delete(); gray.delete(); thresh.delete(); contours.delete(); hierarchy.delete();
       };
 
       img.onerror = reject;
