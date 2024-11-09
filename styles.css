@@ -4,17 +4,26 @@ body {
 }
 
 #manga-page-container img {
-   width: 80%;
+   max-width: 80%;
+   width: auto;
    margin: 10px;
 }
 
-button {
-   margin: 5px;
-   padding: 10px 15px;
-   font-size: 16px;
+.panel-container {
+   margin: 20px 0;
 }
 
-#description-text {
+.panel-container img {
+   max-width: 80%;
+   width: auto;
+   margin: 10px auto;
+}
+
+.panel-container p {
    font-size: 18px;
    margin-top: 10px;
+   text-align: left;
+   width: 80%;
+   margin-left: auto;
+   margin-right: auto;
 }
