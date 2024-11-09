@@ -11,6 +11,13 @@ function setMode(mode) {
 }
 
 async function handleFileUpload(event) {
+   // Wait for OpenCV.js to be initialized
+   if (typeof cv === 'undefined' || !cv['onRuntimeInitialized']) {
+      await new Promise((resolve) => {
+         cv['onRuntimeInitialized'] = resolve;
+      });
+   }
+
    const files = event.target.files;
    for (let file of files) {
       if (file.type.startsWith("image/")) {
@@ -22,10 +29,22 @@ async function handleFileUpload(event) {
 }
 
 async function handleImage(file) {
+   // Display the original image
+   const img = document.createElement("img");
+   img.src = URL.createObjectURL(file);
+   img.alt = "Manga page";
+   document.getElementById("manga-page-container").appendChild(img);
+
    // Segment the panels
    const panels = await segmentPanels(file);
 
    for (const panelBlob of panels) {
+      // Display each panel
+      const panelImg = document.createElement("img");
+      panelImg.src = URL.createObjectURL(panelBlob);
+      panelImg.alt = "Manga panel";
+      document.getElementById("manga-page-container").appendChild(panelImg);
+
       // Generate image description with Hugging Face
       const description = await generateDescriptionWithHuggingFace(panelBlob);
 
@@ -138,7 +157,6 @@ function createPreprocessedImage(imageBlob) {
    });
 }
 
-// Add the segmentPanels function
 function segmentPanels(imageBlob) {
    return new Promise((resolve, reject) => {
       const img = new Image();
@@ -168,13 +186,37 @@ function segmentPanels(imageBlob) {
          cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
          const panels = [];
+         const totalContours = contours.size();
+         let validPanels = 0;
+         let processedPanels = 0;
 
-         for (let i = 0; i < contours.size(); ++i) {
+         // First, count the number of valid panels
+         for (let i = 0; i < totalContours; ++i) {
+            const cnt = contours.get(i);
+            const rect = cv.boundingRect(cnt);
+            // Filter out small areas
+            if (rect.width * rect.height >= 10000) {
+               validPanels++;
+            }
+            cnt.delete(); // Delete the contour after use
+         }
+
+         if (validPanels === 0) {
+            // No valid panels found
+            // Clean up
+            src.delete(); gray.delete(); thresh.delete(); contours.delete(); hierarchy.delete();
+            resolve(panels);
+            return;
+         }
+
+         // Now process the valid panels
+         for (let i = 0; i < totalContours; ++i) {
             const cnt = contours.get(i);
             const rect = cv.boundingRect(cnt);
 
             // Filter out small areas
             if (rect.width * rect.height < 10000) {
+               cnt.delete();
                continue;
             }
 
@@ -195,18 +237,19 @@ function segmentPanels(imageBlob) {
                rect.height
             );
 
+            cnt.delete(); // Delete the contour after use
+
             // Convert panel canvas to blob
             panelCanvas.toBlob((blob) => {
                panels.push(blob);
-               // Resolve when all panels are processed
-               if (panels.length === contours.size()) {
+               processedPanels++;
+               if (processedPanels === validPanels) {
+                  // Clean up
+                  src.delete(); gray.delete(); thresh.delete(); contours.delete(); hierarchy.delete();
                   resolve(panels);
                }
             }, imageBlob.type);
          }
-
-         // Clean up
-         src.delete(); gray.delete(); thresh.delete(); contours.delete(); hierarchy.delete();
       };
 
       img.onerror = reject;
