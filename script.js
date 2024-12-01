@@ -194,7 +194,6 @@ async function extractTextFromSpeechBubbles(panelBlob) {
   return ocrTexts;
 }
 
-
 function groupWordsIntoLines(words) {
   const lines = [];
   let currentLine = [];
