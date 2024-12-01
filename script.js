@@ -83,7 +83,7 @@ async function handleImage(file) {
 }
 
 async function generateDescriptionWithHuggingFace(imageBlob) {
-  const apiUrl = "https://api-inference.huggingface.co/models/nlpconnect/vit-gpt2-image-captioning";
+  const apiUrl = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-large";
   const apiKey = "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"; // Replace with your actual API key
 
   // Get the base64-encoded image without the data URL prefix
