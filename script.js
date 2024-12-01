@@ -144,34 +144,47 @@ function blobToBase64(blob) {
   });
 }
 
-function preprocessImage(canvas) {
-  const ctx = canvas.getContext("2d");
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const data = imageData.data;
+async function preprocessImage(canvas) {
+  return new Promise((resolve, reject) => {
+    try {
+      const ctx = canvas.getContext("2d");
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
 
-  // Convert to grayscale
-  for (let i = 0; i < data.length; i += 4) {
-    const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-    data[i] = avg; // Red
-    data[i + 1] = avg; // Green
-    data[i + 2] = avg; // Blue
-  }
+      // Convert to grayscale
+      for (let i = 0; i < data.length; i += 4) {
+        const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+        data[i] = avg;     // Red
+        data[i + 1] = avg; // Green
+        data[i + 2] = avg; // Blue
+      }
 
-  ctx.putImageData(imageData, 0, 0);
+      ctx.putImageData(imageData, 0, 0);
 
-  // Apply basic binary thresholding
-  const threshold = 128; // Adjust threshold value as needed
-  for (let i = 0; i < data.length; i += 4) {
-    const brightness = data[i]; // Red channel (grayscale value)
-    const value = brightness > threshold ? 255 : 0;
-    data[i] = value; // Red
-    data[i + 1] = value; // Green
-    data[i + 2] = value; // Blue
-  }
+      // Apply basic binary thresholding
+      const threshold = 128; // Adjust threshold value as needed
+      for (let i = 0; i < data.length; i += 4) {
+        const brightness = data[i]; // Grayscale value
+        const value = brightness > threshold ? 255 : 0;
+        data[i] = value;     // Red
+        data[i + 1] = value; // Green
+        data[i + 2] = value; // Blue
+      }
 
-  ctx.putImageData(imageData, 0, 0);
+      ctx.putImageData(imageData, 0, 0);
 
-  return canvas;
+      // Convert the processed canvas back to a Blob
+      canvas.toBlob((blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error("Failed to convert canvas to blob"));
+        }
+      }, "image/png");
+    } catch (error) {
+      reject(error);
+    }
+  });
 }
 
 
@@ -180,15 +193,20 @@ async function extractTextFromSpeechBubbles(panelBlob) {
   const ocrTexts = [];
 
   for (const bubbleCanvas of speechBubbles) {
-    // Preprocess the canvas image directly
-    const preprocessedCanvas = preprocessImage(bubbleCanvas);
+    try {
+      // Preprocess the image using the canvas
+      const preprocessedBlob = await preprocessImage(bubbleCanvas);
 
-    // Run OCR on the preprocessed canvas
-    const { data: { text } } = await Tesseract.recognize(preprocessedCanvas, "eng", {
-      logger: (m) => console.log(m),
-    });
+      // Run OCR on the preprocessed image
+      const { data: { text } } = await Tesseract.recognize(preprocessedBlob, "eng", {
+        logger: (m) => console.log(m),
+      });
 
-    ocrTexts.push(text.trim());
+      ocrTexts.push(text.trim());
+    } catch (error) {
+      console.error("Error processing speech bubble:", error);
+      ocrTexts.push("Error extracting text.");
+    }
   }
 
   return ocrTexts;
