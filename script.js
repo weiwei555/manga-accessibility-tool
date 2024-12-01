@@ -86,16 +86,23 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
   const apiUrl = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-large";
   const apiKey = "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"; // Replace with your actual API key
 
-  // Get the base64-encoded image without the data URL prefix
+  // Convert the image blob to base64
   const base64Image = await blobToBase64(imageBlob);
 
+  // Define the custom prompt
+  const prompt = "Describe the image and transcribe the dialogue from the speech bubbles.";
+
+  // Prepare the payload with the image and the custom prompt
   const payload = {
-    inputs: base64Image,
+    inputs: {
+      image: base64Image,
+      prompt: prompt,
+    },
     options: {
       wait_for_model: true,
     },
   };
-
+  
   try {
     const response = await fetch(apiUrl, {
       method: "POST",
