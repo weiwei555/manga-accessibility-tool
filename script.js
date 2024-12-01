@@ -137,27 +137,69 @@ function blobToBase64(blob) {
   });
 }
 
+function preprocessImage(image) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.src = URL.createObjectURL(image);
+
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0);
+
+      // Convert to grayscale
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+        data[i] = avg;
+        data[i + 1] = avg;
+        data[i + 2] = avg;
+      }
+      ctx.putImageData(imageData, 0, 0);
+
+      // Apply adaptive thresholding
+      // Note: Implementing adaptive thresholding requires additional libraries like OpenCV.js.
+      // For simplicity, we'll apply a basic binary threshold here.
+      for (let i = 0; i < data.length; i += 4) {
+        const brightness = data[i];
+        const threshold = 128; // You can adjust this value
+        const value = brightness < threshold ? 0 : 255;
+        data[i] = data[i + 1] = data[i + 2] = value;
+      }
+      ctx.putImageData(imageData, 0, 0);
+
+      canvas.toBlob(resolve, image.type);
+    };
+
+    img.onerror = reject;
+  });
+}
+
 async function extractTextFromSpeechBubbles(panelBlob) {
   const speechBubbles = await detectSpeechBubbles(panelBlob);
   const ocrTexts = [];
 
   for (const bubbleCanvas of speechBubbles) {
-    // Run OCR on each speech bubble
-    const { data: { words } } = await Tesseract.recognize(bubbleCanvas, "eng", {
+    // Convert canvas to blob
+    const blob = await new Promise((resolve) => bubbleCanvas.toBlob(resolve));
+
+    // Preprocess the image
+    const preprocessedBlob = await preprocessImage(blob);
+
+    // Run OCR on the preprocessed image
+    const { data: { text } } = await Tesseract.recognize(preprocessedBlob, "eng", {
       logger: (m) => console.log(m),
     });
-
-    // Group words by their bounding boxes to form lines of text
-    const lines = groupWordsIntoLines(words);
-
-    // Combine lines into a single string
-    const text = lines.map(line => line.map(word => word.text).join(' ')).join('\n');
 
     ocrTexts.push(text.trim());
   }
 
   return ocrTexts;
 }
+
 
 function groupWordsIntoLines(words) {
   const lines = [];
