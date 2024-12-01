@@ -144,46 +144,36 @@ function blobToBase64(blob) {
   });
 }
 
-function preprocessImage(image) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.src = URL.createObjectURL(image);
+function preprocessImage(canvas) {
+  const ctx = canvas.getContext("2d");
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
 
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(img, 0, 0);
+  // Convert to grayscale
+  for (let i = 0; i < data.length; i += 4) {
+    const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+    data[i] = avg; // Red
+    data[i + 1] = avg; // Green
+    data[i + 2] = avg; // Blue
+  }
 
-      // Convert to grayscale
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imageData.data;
-      for (let i = 0; i < data.length; i += 4) {
-        const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-        data[i] = avg;
-        data[i + 1] = avg;
-        data[i + 2] = avg;
-      }
-      ctx.putImageData(imageData, 0, 0);
+  ctx.putImageData(imageData, 0, 0);
 
-      // Apply adaptive thresholding
-      // Note: Implementing adaptive thresholding requires additional libraries like OpenCV.js.
-      // For simplicity, we'll apply a basic binary threshold here.
-      for (let i = 0; i < data.length; i += 4) {
-        const brightness = data[i];
-        const threshold = 128; // You can adjust this value
-        const value = brightness < threshold ? 0 : 255;
-        data[i] = data[i + 1] = data[i + 2] = value;
-      }
-      ctx.putImageData(imageData, 0, 0);
+  // Apply basic binary thresholding
+  const threshold = 128; // Adjust threshold value as needed
+  for (let i = 0; i < data.length; i += 4) {
+    const brightness = data[i]; // Red channel (grayscale value)
+    const value = brightness > threshold ? 255 : 0;
+    data[i] = value; // Red
+    data[i + 1] = value; // Green
+    data[i + 2] = value; // Blue
+  }
 
-      canvas.toBlob(resolve, image.type);
-    };
+  ctx.putImageData(imageData, 0, 0);
 
-    img.onerror = reject;
-  });
+  return canvas;
 }
+
 
 async function extractTextFromSpeechBubbles(panelBlob) {
   const speechBubbles = await detectSpeechBubbles(panelBlob);
@@ -216,7 +206,7 @@ function groupWordsIntoLines(words) {
   words.forEach(word => {
     const wordY = word.bbox.y0;
 
-    if (currentY === null || Math.abs(wordY - currentY) < 10) {
+    if (currentY === null || Math.abs(wordY - currentY) < 15) { // Adjust proximity threshold if needed
       currentLine.push(word);
     } else {
       lines.push(currentLine);
@@ -240,7 +230,6 @@ function detectSpeechBubbles(panelImage) {
     img.src = URL.createObjectURL(panelImage);
 
     img.onload = () => {
-      // Create canvas and get image data
       const canvas = document.createElement("canvas");
       canvas.width = img.width;
       canvas.height = img.height;
@@ -248,17 +237,14 @@ function detectSpeechBubbles(panelImage) {
       ctx.drawImage(img, 0, 0);
 
       // Convert canvas to OpenCV Mat
-      let src = cv.imread(canvas);
-      let gray = new cv.Mat();
-      let thresh = new cv.Mat();
-      let contours = new cv.MatVector();
-      let hierarchy = new cv.Mat();
+      const src = cv.imread(canvas);
+      const gray = new cv.Mat();
+      const thresh = new cv.Mat();
+      const contours = new cv.MatVector();
+      const hierarchy = new cv.Mat();
 
       // Convert to grayscale
       cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
-
-      // Apply median blur to reduce noise
-      cv.medianBlur(gray, gray, 5);
 
       // Apply adaptive thresholding
       cv.adaptiveThreshold(
@@ -281,12 +267,10 @@ function detectSpeechBubbles(panelImage) {
       for (let i = 0; i < contours.size(); ++i) {
         const cnt = contours.get(i);
         const rect = cv.boundingRect(cnt);
-        const aspectRatio = rect.width / rect.height;
         const area = cv.contourArea(cnt);
 
-        // Filter based on area and aspect ratio
-        if (area > minArea && area < maxArea && aspectRatio > 0.5 && aspectRatio < 1.5) {
-          // Potential speech bubble
+        // Filter based on area
+        if (area > minArea && area < maxArea) {
           const bubbleCanvas = document.createElement("canvas");
           bubbleCanvas.width = rect.width;
           bubbleCanvas.height = rect.height;
