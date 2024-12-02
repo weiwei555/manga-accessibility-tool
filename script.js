@@ -228,6 +228,8 @@ function detectSpeechBubbles(panelImage) {
       const bubbles = [];
       const minArea = 500; // Minimum area to be considered a speech bubble
       const maxArea = (img.width * img.height) / 2; // Max area to filter out large regions
+
+      // Create a debug canvas to visualize detected bubbles
       const debugCanvas = document.createElement("canvas");
       debugCanvas.width = canvas.width;
       debugCanvas.height = canvas.height;
@@ -242,11 +244,12 @@ function detectSpeechBubbles(panelImage) {
 
         // Filter based on area and aspect ratio
         if (area > minArea && area < maxArea && aspectRatio > 0.5 && aspectRatio < 1.5) {
+          // Draw a rectangle on the debug canvas
           debugCtx.strokeStyle = "red";
           debugCtx.lineWidth = 2;
           debugCtx.strokeRect(rect.x, rect.y, rect.width, rect.height);
 
-          // Potential speech bubble
+          // Extract the speech bubble region
           const bubbleCanvas = document.createElement("canvas");
           bubbleCanvas.width = rect.width;
           bubbleCanvas.height = rect.height;
@@ -267,6 +270,12 @@ function detectSpeechBubbles(panelImage) {
         cnt.delete();
       }
 
+      // Append the debug canvas to visualize the detected bubbles
+      const debugTitle = document.createElement("h3");
+      debugTitle.textContent = "Detected Speech Bubbles (Debug View):";
+      document.getElementById("manga-page-container").appendChild(debugTitle);
+      document.getElementById("manga-page-container").appendChild(debugCanvas);
+
       // Clean up
       src.delete();
       gray.delete();
@@ -280,6 +289,7 @@ function detectSpeechBubbles(panelImage) {
     img.onerror = reject;
   });
 }
+
 
 function segmentPanels(imageBlob) {
   return new Promise((resolve, reject) => {
