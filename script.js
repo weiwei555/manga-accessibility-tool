@@ -174,6 +174,7 @@ function blobToBase64(blob) {
     reader.readAsDataURL(blob);
   });
 }
+
 async function extractTextFromSpeechBubbles(imageBlob) {
   const textRegions = await detectTextRegions(imageBlob);
 
@@ -189,29 +190,19 @@ async function extractTextFromSpeechBubbles(imageBlob) {
 
   const ocrResults = [];
   for (const region of textRegions) {
-    const expandedRegion = expandBoundingBox(region, 10, img.width, img.height);
+    const { x, y, width, height } = region;
 
-    // Draw debug rectangle for speech bubbles
-    debugCtx.strokeStyle = "blue";
+    // Draw debug rectangle for visualization
+    debugCtx.strokeStyle = "red";
     debugCtx.lineWidth = 2;
-    debugCtx.strokeRect(expandedRegion.x, expandedRegion.y, expandedRegion.width, expandedRegion.height);
+    debugCtx.strokeRect(x, y, width, height);
 
     // Extract the region from the original image
     const canvas = document.createElement("canvas");
-    canvas.width = expandedRegion.width;
-    canvas.height = expandedRegion.height;
+    canvas.width = width;
+    canvas.height = height;
     const ctx = canvas.getContext("2d");
-    ctx.drawImage(
-      img,
-      expandedRegion.x,
-      expandedRegion.y,
-      expandedRegion.width,
-      expandedRegion.height,
-      0,
-      0,
-      expandedRegion.width,
-      expandedRegion.height
-    );
+    ctx.drawImage(img, x, y, width, height, 0, 0, width, height);
 
     // Convert to blob and run OCR
     const blob = await new Promise(resolve => canvas.toBlob(resolve));
@@ -224,7 +215,7 @@ async function extractTextFromSpeechBubbles(imageBlob) {
 
   // Append final debug canvas to DOM
   const debugTitle = document.createElement("h3");
-  debugTitle.textContent = "Debug View: Speech Bubble Regions";
+  debugTitle.textContent = "Debug View: Detected Text Regions";
   document.getElementById("manga-page-container").appendChild(debugTitle);
   document.getElementById("manga-page-container").appendChild(debugCanvas);
 
@@ -267,6 +258,7 @@ function groupWordsIntoLines(words) {
 
   return lines;
 }
+
 function detectTextRegions(imageBlob) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -282,7 +274,6 @@ function detectTextRegions(imageBlob) {
       const src = cv.imread(canvas);
       const gray = new cv.Mat();
       const binary = new cv.Mat();
-      const edges = new cv.Mat();
       const contours = new cv.MatVector();
       const hierarchy = new cv.Mat();
 
@@ -292,64 +283,39 @@ function detectTextRegions(imageBlob) {
       // Apply adaptive thresholding
       cv.adaptiveThreshold(gray, binary, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 11, 2);
 
-      // Apply edge detection
-      cv.Canny(binary, edges, 50, 150);
+      // Morphological operation to remove small noise
+      const kernel = cv.Mat.ones(2, 2, cv.CV_8UC1);
+      cv.morphologyEx(binary, binary, cv.MORPH_CLOSE, kernel);
 
       // Find contours
-      cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+      cv.findContours(binary, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
       const textRegions = [];
-      const debugCanvas = document.createElement("canvas");
-      debugCanvas.width = canvas.width;
-      debugCanvas.height = canvas.height;
-      const debugCtx = debugCanvas.getContext("2d");
-      debugCtx.drawImage(img, 0, 0);
-      debugCtx.strokeStyle = "red";
-      debugCtx.lineWidth = 2;
-
       for (let i = 0; i < contours.size(); i++) {
         const rect = cv.boundingRect(contours.get(i));
         const { x, y, width, height } = rect;
 
-        // Filter based on size
-        const minArea = 300; // Minimum area to consider as text
-        const maxArea = (src.cols * src.rows) / 2; // Max area to avoid large regions
+        // Filter contours by area and aspect ratio
         const area = width * height;
-
-        if (area >= minArea && area <= maxArea && width > 10 && height > 10) {
+        const aspectRatio = width / height;
+        if (area > 100 && area < 10000 && aspectRatio > 0.2 && aspectRatio < 5) {
           textRegions.push({ x, y, width, height });
-          debugCtx.strokeRect(x, y, width, height); // Draw debug rectangles
         }
       }
-
-      // Append debug canvas to DOM
-      const debugTitle = document.createElement("h3");
-      debugTitle.textContent = "Debug View: Detected Text Regions";
-      document.getElementById("manga-page-container").appendChild(debugTitle);
-      document.getElementById("manga-page-container").appendChild(debugCanvas);
 
       // Clean up
       src.delete();
       gray.delete();
       binary.delete();
-      edges.delete();
       contours.delete();
       hierarchy.delete();
+      kernel.delete();
 
       resolve(textRegions);
     };
 
     img.onerror = reject;
   });
-}
-function expandBoundingBox(box, expansionFactor, imgWidth, imgHeight) {
-  const { x, y, width, height } = box;
-  return {
-    x: Math.max(0, x - expansionFactor),
-    y: Math.max(0, y - expansionFactor),
-    width: Math.min(imgWidth - x, width + 2 * expansionFactor),
-    height: Math.min(imgHeight - y, height + 2 * expansionFactor),
-  };
 }
 
 async function extractSpeechBubbles(imageBlob, textRegions) {
