@@ -138,54 +138,52 @@ function blobToBase64(blob) {
 }
 
 async function extractTextFromSpeechBubbles(panelBlob) {
-  const bubbleRegions = await detectSpeechBubbles(panelBlob); // Detect speech bubble regions
-  const extractedTexts = [];
+  const speechBubbles = await detectSpeechBubbles(panelBlob);
+  const ocrTexts = [];
 
-  for (const region of bubbleRegions) {
-    try {
-      // Process and run OCR on each detected bubble region
-      const processedRegion = await preprocessBubbleRegion(region);
-      const { data: { text } } = await Tesseract.recognize(processedRegion, "eng", {
-        logger: (info) => console.log(info), // Log OCR progress
-      });
-      extractedTexts.push(text.trim());
-    } catch (error) {
-      console.error("Error processing bubble region:", error);
-      extractedTexts.push("[Unable to extract text]");
+  for (const bubbleCanvas of speechBubbles) {
+    // Run OCR on each speech bubble
+    const { data: { words } } = await Tesseract.recognize(bubbleCanvas, "eng", {
+      logger: (m) => console.log(m),
+    });
+
+    // Group words by their bounding boxes to form lines of text
+    const lines = groupWordsIntoLines(words);
+
+    // Combine lines into a single string
+    const text = lines.map(line => line.map(word => word.text).join(' ')).join('\n');
+
+    ocrTexts.push(text.trim());
+  }
+
+  return ocrTexts;
+}
+
+function groupWordsIntoLines(words) {
+  const lines = [];
+  let currentLine = [];
+  let currentY = null;
+
+  words.forEach(word => {
+    const wordY = word.bbox.y0;
+
+    if (currentY === null || Math.abs(wordY - currentY) < 10) {
+      currentLine.push(word);
+    } else {
+      lines.push(currentLine);
+      currentLine = [word];
     }
+
+    currentY = wordY;
+  });
+
+  if (currentLine.length > 0) {
+    lines.push(currentLine);
   }
 
-  return extractedTexts;
+  return lines;
 }
 
-async function preprocessBubbleRegion(regionCanvas) {
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d");
-  canvas.width = regionCanvas.width;
-  canvas.height = regionCanvas.height;
-
-  // Draw the region onto the canvas
-  ctx.drawImage(regionCanvas, 0, 0);
-
-  // Convert to grayscale
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const data = imageData.data;
-  for (let i = 0; i < data.length; i += 4) {
-    const grayValue = 0.3 * data[i] + 0.59 * data[i + 1] + 0.11 * data[i + 2];
-    data[i] = data[i + 1] = data[i + 2] = grayValue; // Set RGB to grayscale
-  }
-  ctx.putImageData(imageData, 0, 0);
-
-  // Apply binary thresholding
-  const threshold = 128;
-  for (let i = 0; i < data.length; i += 4) {
-    const binaryValue = data[i] > threshold ? 255 : 0;
-    data[i] = data[i + 1] = data[i + 2] = binaryValue; // Binary threshold
-  }
-  ctx.putImageData(imageData, 0, 0);
-
-  return new Promise((resolve) => canvas.toBlob(resolve));
-}
 
 function detectSpeechBubbles(panelImage) {
   return new Promise((resolve, reject) => {
@@ -193,20 +191,25 @@ function detectSpeechBubbles(panelImage) {
     img.src = URL.createObjectURL(panelImage);
 
     img.onload = () => {
+      // Create canvas and get image data
       const canvas = document.createElement("canvas");
       canvas.width = img.width;
       canvas.height = img.height;
       const ctx = canvas.getContext("2d");
       ctx.drawImage(img, 0, 0);
 
-      const src = cv.imread(canvas);
-      const gray = new cv.Mat();
-      const thresh = new cv.Mat();
-      const contours = new cv.MatVector();
-      const hierarchy = new cv.Mat();
+      // Convert canvas to OpenCV Mat
+      let src = cv.imread(canvas);
+      let gray = new cv.Mat();
+      let thresh = new cv.Mat();
+      let contours = new cv.MatVector();
+      let hierarchy = new cv.Mat();
 
       // Convert to grayscale
       cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
+
+      // Apply median blur to reduce noise
+      cv.medianBlur(gray, gray, 5);
 
       // Apply adaptive thresholding
       cv.adaptiveThreshold(
@@ -222,12 +225,6 @@ function detectSpeechBubbles(panelImage) {
       // Find contours
       cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-      const debugCanvas = document.createElement("canvas");
-      debugCanvas.width = canvas.width;
-      debugCanvas.height = canvas.height;
-      const debugCtx = debugCanvas.getContext("2d");
-      debugCtx.drawImage(img, 0, 0);
-
       const bubbles = [];
       const minArea = 500; // Minimum area to be considered a speech bubble
       const maxArea = (img.width * img.height) / 2; // Max area to filter out large regions
@@ -235,15 +232,16 @@ function detectSpeechBubbles(panelImage) {
       for (let i = 0; i < contours.size(); ++i) {
         const cnt = contours.get(i);
         const rect = cv.boundingRect(cnt);
+        const aspectRatio = rect.width / rect.height;
         const area = cv.contourArea(cnt);
 
-        if (area > minArea && area < maxArea) {
-          // Draw the rectangle for debugging
+        // Filter based on area and aspect ratio
+        if (area > minArea && area < maxArea && aspectRatio > 0.5 && aspectRatio < 1.5) {
           debugCtx.strokeStyle = "red";
           debugCtx.lineWidth = 2;
           debugCtx.strokeRect(rect.x, rect.y, rect.width, rect.height);
 
-          // Extract bubble region
+          // Potential speech bubble
           const bubbleCanvas = document.createElement("canvas");
           bubbleCanvas.width = rect.width;
           bubbleCanvas.height = rect.height;
@@ -261,12 +259,8 @@ function detectSpeechBubbles(panelImage) {
           );
           bubbles.push(bubbleCanvas);
         }
-
         cnt.delete();
       }
-
-      // Append debug canvas for visualization
-      document.getElementById("manga-page-container").appendChild(debugCanvas);
 
       // Clean up
       src.delete();
@@ -281,7 +275,6 @@ function detectSpeechBubbles(panelImage) {
     img.onerror = reject;
   });
 }
-
 
 function segmentPanels(imageBlob) {
   return new Promise((resolve, reject) => {
