@@ -228,6 +228,9 @@ function detectSpeechBubbles(panelImage) {
       const bubbles = [];
       const minArea = 500; // Minimum area to be considered a speech bubble
       const maxArea = (img.width * img.height) / 2; // Max area to filter out large regions
+      const debugCanvas = document.createElement("canvas");
+      debugCanvas.width = canvas.width;
+      debugCanvas.height = canvas.height;
       const debugCtx = debugCanvas.getContext("2d");
       debugCtx.drawImage(img, 0, 0);
 
