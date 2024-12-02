@@ -225,7 +225,7 @@ function groupWordsIntoLines(words) {
 
 
 async function detectSpeechBubbles(panelBlob) {
-  return new Promise(async (resolve, reject) => {
+  return new Promise((resolve, reject) => {
     try {
       // Load the image
       const img = new Image();
@@ -238,19 +238,6 @@ async function detectSpeechBubbles(panelBlob) {
         canvas.height = img.height;
         const ctx = canvas.getContext("2d");
         ctx.drawImage(img, 0, 0);
-
-        // Run OCR to detect text zones
-        const { data: { words } } = await Tesseract.recognize(canvas, "eng", {
-          logger: (m) => console.log(m),
-        });
-
-        // Convert detected words to bounding boxes
-        const textZones = words.map(word => ({
-          x: word.bbox.x0,
-          y: word.bbox.y0,
-          width: word.bbox.x1 - word.bbox.x0,
-          height: word.bbox.y1 - word.bbox.y0,
-        }));
 
         // Prepare OpenCV.js structures
         const src = cv.imread(canvas);
@@ -279,41 +266,41 @@ async function detectSpeechBubbles(panelBlob) {
 
         const bubbles = [];
 
-        // For each detected text zone, find the nearest contour edges
-        textZones.forEach((zone) => {
-          let closestContour = null;
-          let minDistance = Infinity;
+        // Process contours to detect speech bubbles
+        for (let i = 0; i < contours.size(); ++i) {
+          const cnt = contours.get(i);
+          const rect = cv.boundingRect(cnt);
+          const area = cv.contourArea(cnt);
 
-          for (let i = 0; i < contours.size(); i++) {
-            const cnt = contours.get(i);
-            const rect = cv.boundingRect(cnt);
+          // Filter based on area
+          if (area > 500 && area < (img.width * img.height) / 2) {
+            // Draw rectangle on debug canvas
+            debugCtx.strokeRect(rect.x, rect.y, rect.width, rect.height);
 
-            // Calculate distance from text zone to contour
-            const dx = Math.abs(rect.x - zone.x);
-            const dy = Math.abs(rect.y - zone.y);
-            const distance = Math.sqrt(dx * dx + dy * dy);
+            // Create a canvas for the bubble region
+            const bubbleCanvas = document.createElement("canvas");
+            bubbleCanvas.width = rect.width;
+            bubbleCanvas.height = rect.height;
+            const bubbleCtx = bubbleCanvas.getContext("2d");
 
-            // Keep the closest contour
-            if (distance < minDistance) {
-              minDistance = distance;
-              closestContour = rect;
-            }
+            // Draw the bubble region onto the bubble canvas
+            bubbleCtx.drawImage(
+              img,
+              rect.x,
+              rect.y,
+              rect.width,
+              rect.height,
+              0,
+              0,
+              rect.width,
+              rect.height
+            );
+
+            // Add the bubble canvas to the result
+            bubbles.push(bubbleCanvas);
           }
-
-          // Expand the text zone to include the closest contour
-          if (closestContour) {
-            const bubble = {
-              x: Math.min(zone.x, closestContour.x),
-              y: Math.min(zone.y, closestContour.y),
-              width: Math.max(zone.x + zone.width, closestContour.x + closestContour.width) - Math.min(zone.x, closestContour.x),
-              height: Math.max(zone.y + zone.height, closestContour.y + closestContour.height) - Math.min(zone.y, closestContour.y),
-            };
-
-            // Add bubble to results and draw on debug canvas
-            bubbles.push(bubble);
-            debugCtx.strokeRect(bubble.x, bubble.y, bubble.width, bubble.height);
-          }
-        });
+          cnt.delete();
+        }
 
         // Append debug canvas to DOM
         const debugTitle = document.createElement("h3");
@@ -338,6 +325,7 @@ async function detectSpeechBubbles(panelBlob) {
     }
   });
 }
+
 
 
 function segmentPanels(imageBlob) {
