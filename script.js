@@ -223,7 +223,6 @@ function groupWordsIntoLines(words) {
   return lines;
 }
 
-
 async function detectSpeechBubbles(panelBlob) {
   return new Promise((resolve, reject) => {
     try {
@@ -325,7 +324,6 @@ async function detectSpeechBubbles(panelBlob) {
     }
   });
 }
-
 
 
 function segmentPanels(imageBlob) {
