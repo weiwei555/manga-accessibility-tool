@@ -224,121 +224,120 @@ function groupWordsIntoLines(words) {
 }
 
 
-function detectSpeechBubbles(panelImage) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.src = URL.createObjectURL(panelImage);
+async function detectSpeechBubbles(panelBlob) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Load the image
+      const img = new Image();
+      img.src = URL.createObjectURL(panelBlob);
 
-    img.onload = () => {
-      // Create a canvas for the original image
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(img, 0, 0);
+      img.onload = async () => {
+        // Create a canvas for the original image
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0);
 
-      // Convert canvas to OpenCV Mat
-      const src = cv.imread(canvas);
-      const gray = new cv.Mat();
-      const blurred = new cv.Mat();
-      const thresh = new cv.Mat();
-      const contours = new cv.MatVector();
-      const hierarchy = new cv.Mat();
+        // Run OCR to detect text zones
+        const { data: { words } } = await Tesseract.recognize(canvas, "eng", {
+          logger: (m) => console.log(m),
+        });
 
-      // Convert to grayscale
-      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
+        // Convert detected words to bounding boxes
+        const textZones = words.map(word => ({
+          x: word.bbox.x0,
+          y: word.bbox.y0,
+          width: word.bbox.x1 - word.bbox.x0,
+          height: word.bbox.y1 - word.bbox.y0,
+        }));
 
-      // Apply Gaussian blur to reduce noise
-      cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
+        // Prepare OpenCV.js structures
+        const src = cv.imread(canvas);
+        const gray = new cv.Mat();
+        const edges = new cv.Mat();
+        const contours = new cv.MatVector();
+        const hierarchy = new cv.Mat();
 
-      // Apply adaptive thresholding to detect bubble regions
-      cv.adaptiveThreshold(
-        blurred,
-        thresh,
-        255,
-        cv.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv.THRESH_BINARY_INV,
-        11,
-        2
-      );
+        // Convert to grayscale
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
 
-      // Find contours
-      cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+        // Apply Canny edge detection to detect edges
+        cv.Canny(gray, edges, 50, 150);
 
-      const bubbles = [];
-      const minArea = 500; // Minimum area to consider a bubble
-      const maxArea = (img.width * img.height) / 2; // Max area to consider a bubble
+        // Find contours
+        cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-      // Create a debug canvas
-      const debugCanvas = document.createElement("canvas");
-      debugCanvas.width = canvas.width;
-      debugCanvas.height = canvas.height;
-      const debugCtx = debugCanvas.getContext("2d");
-      debugCtx.drawImage(img, 0, 0);
+        // Debug canvas to show detected bubbles
+        const debugCanvas = document.createElement("canvas");
+        debugCanvas.width = canvas.width;
+        debugCanvas.height = canvas.height;
+        const debugCtx = debugCanvas.getContext("2d");
+        debugCtx.drawImage(img, 0, 0);
+        debugCtx.strokeStyle = "red";
+        debugCtx.lineWidth = 2;
 
-      // Process contours
-      for (let i = 0; i < contours.size(); ++i) {
-        const cnt = contours.get(i);
-        const rect = cv.boundingRect(cnt);
-        const area = cv.contourArea(cnt);
-        const aspectRatio = rect.width / rect.height;
+        const bubbles = [];
 
-        // Filter based on size and aspect ratio
-        if (
-          area > minArea &&
-          area < maxArea &&
-          aspectRatio > 0.5 &&
-          aspectRatio < 1.5
-        ) {
-          // Draw rectangles on debug canvas
-          debugCtx.strokeStyle = "red";
-          debugCtx.lineWidth = 2;
-          debugCtx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+        // For each detected text zone, find the nearest contour edges
+        textZones.forEach((zone) => {
+          let closestContour = null;
+          let minDistance = Infinity;
 
-          // Extract bubble regions
-          const bubbleCanvas = document.createElement("canvas");
-          bubbleCanvas.width = rect.width;
-          bubbleCanvas.height = rect.height;
-          const bubbleCtx = bubbleCanvas.getContext("2d");
-          bubbleCtx.drawImage(
-            img,
-            rect.x,
-            rect.y,
-            rect.width,
-            rect.height,
-            0,
-            0,
-            rect.width,
-            rect.height
-          );
-          bubbles.push(bubbleCanvas);
-        }
+          for (let i = 0; i < contours.size(); i++) {
+            const cnt = contours.get(i);
+            const rect = cv.boundingRect(cnt);
 
-        cnt.delete();
-      }
+            // Calculate distance from text zone to contour
+            const dx = Math.abs(rect.x - zone.x);
+            const dy = Math.abs(rect.y - zone.y);
+            const distance = Math.sqrt(dx * dx + dy * dy);
 
-      // Display the debug image in the DOM
-      const debugTitle = document.createElement("h3");
-      debugTitle.textContent = "Detected Speech Bubbles (Debug View):";
-      document.getElementById("manga-page-container").appendChild(debugTitle);
-      document.getElementById("manga-page-container").appendChild(debugCanvas);
+            // Keep the closest contour
+            if (distance < minDistance) {
+              minDistance = distance;
+              closestContour = rect;
+            }
+          }
 
-      // Clean up
-      src.delete();
-      gray.delete();
-      blurred.delete();
-      thresh.delete();
-      contours.delete();
-      hierarchy.delete();
+          // Expand the text zone to include the closest contour
+          if (closestContour) {
+            const bubble = {
+              x: Math.min(zone.x, closestContour.x),
+              y: Math.min(zone.y, closestContour.y),
+              width: Math.max(zone.x + zone.width, closestContour.x + closestContour.width) - Math.min(zone.x, closestContour.x),
+              height: Math.max(zone.y + zone.height, closestContour.y + closestContour.height) - Math.min(zone.y, closestContour.y),
+            };
 
-      resolve(bubbles);
-    };
+            // Add bubble to results and draw on debug canvas
+            bubbles.push(bubble);
+            debugCtx.strokeRect(bubble.x, bubble.y, bubble.width, bubble.height);
+          }
+        });
 
-    img.onerror = reject;
+        // Append debug canvas to DOM
+        const debugTitle = document.createElement("h3");
+        debugTitle.textContent = "Detected Speech Bubbles (Debug View):";
+        document.getElementById("manga-page-container").appendChild(debugTitle);
+        document.getElementById("manga-page-container").appendChild(debugCanvas);
+
+        // Clean up OpenCV resources
+        src.delete();
+        gray.delete();
+        edges.delete();
+        contours.delete();
+        hierarchy.delete();
+
+        resolve(bubbles);
+      };
+
+      img.onerror = reject;
+    } catch (error) {
+      console.error("Error in detectSpeechBubbles:", error);
+      reject(error);
+    }
   });
 }
-
-
 
 
 function segmentPanels(imageBlob) {
