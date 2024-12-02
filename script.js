@@ -86,23 +86,16 @@ async function generateDescriptionWithHuggingFace(imageBlob) {
   const apiUrl = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-large";
   const apiKey = "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"; // Replace with your actual API key
 
-  // Convert the image blob to base64
+  // Get the base64-encoded image without the data URL prefix
   const base64Image = await blobToBase64(imageBlob);
 
-  // Define the custom prompt
-  const prompt = "Describe the image and transcribe the dialogue from the speech bubbles.";
-
-  // Prepare the payload with the image and the custom prompt
   const payload = {
-    inputs: {
-      image: base64Image,
-      prompt: prompt,
-    },
+    inputs: base64Image,
     options: {
       wait_for_model: true,
     },
   };
-  
+
   try {
     const response = await fetch(apiUrl, {
       method: "POST",
@@ -144,108 +137,26 @@ function blobToBase64(blob) {
   });
 }
 
-function preprocessImage(canvas) {
-  const ctx = canvas.getContext("2d");
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const data = imageData.data;
-
-  // Convert to grayscale
-  for (let i = 0; i < data.length; i += 4) {
-    const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-    data[i] = avg; // Red
-    data[i + 1] = avg; // Green
-    data[i + 2] = avg; // Blue
-  }
-
-  ctx.putImageData(imageData, 0, 0);
-
-  // Apply basic binary thresholding
-  const threshold = 128; // Adjust threshold value as needed
-  for (let i = 0; i < data.length; i += 4) {
-    const brightness = data[i]; // Red channel (grayscale value)
-    const value = brightness > threshold ? 255 : 0;
-    data[i] = value; // Red
-    data[i + 1] = value; // Green
-    data[i + 2] = value; // Blue
-  }
-
-  ctx.putImageData(imageData, 0, 0);
-
-  return canvas;
-}
-
 async function extractTextFromSpeechBubbles(panelBlob) {
   const speechBubbles = await detectSpeechBubbles(panelBlob);
   const ocrTexts = [];
 
   for (const bubbleCanvas of speechBubbles) {
-    // Convert canvas to blob
-    const blob = await new Promise((resolve) => bubbleCanvas.toBlob(resolve));
+    // Run OCR on each speech bubble
+    const { data: { words } } = await Tesseract.recognize(bubbleCanvas, "eng", {
+      logger: (m) => console.log(m),
+    });
 
-    // Preprocess the image (grayscale and binary thresholding)
-    const preprocessedBlob = await preprocessImage(blob);
+    // Group words by their bounding boxes to form lines of text
+    const lines = groupWordsIntoLines(words);
 
-    // Run OCR on the preprocessed image using Tesseract.js
-    try {
-      const { data: { text } } = await Tesseract.recognize(preprocessedBlob, "eng", {
-        logger: (m) => console.log(m), // Log OCR progress
-      });
-      ocrTexts.push(text.trim());
-    } catch (error) {
-      console.error("Error during OCR:", error);
-      ocrTexts.push("[Error reading this bubble]");
-    }
+    // Combine lines into a single string
+    const text = lines.map(line => line.map(word => word.text).join(' ')).join('\n');
+
+    ocrTexts.push(text.trim());
   }
 
   return ocrTexts;
-}
-
-// Updated preprocessImage function
-async function preprocessImage(blob) {
-  const img = await createImageFromBlob(blob);
-
-  const canvas = document.createElement("canvas");
-  canvas.width = img.width;
-  canvas.height = img.height;
-  const ctx = canvas.getContext("2d");
-
-  // Draw the image onto the canvas
-  ctx.drawImage(img, 0, 0);
-
-  // Convert the image to grayscale
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const data = imageData.data;
-
-  for (let i = 0; i < data.length; i += 4) {
-    const avg = (data[i] + data[i + 1] + data[i + 2]) / 3; // Average RGB values
-    data[i] = data[i + 1] = data[i + 2] = avg; // Set RGB to grayscale
-  }
-
-  ctx.putImageData(imageData, 0, 0);
-
-  // Apply binary thresholding
-  const threshold = 128; // Adjust threshold as needed
-  for (let i = 0; i < data.length; i += 4) {
-    const brightness = data[i];
-    const value = brightness > threshold ? 255 : 0; // Binary threshold
-    data[i] = data[i + 1] = data[i + 2] = value;
-  }
-
-  ctx.putImageData(imageData, 0, 0);
-
-  return new Promise((resolve) => {
-    canvas.toBlob(resolve);
-  });
-}
-
-// Helper function to create an image from a blob
-function createImageFromBlob(blob) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = URL.createObjectURL(blob);
-  });
 }
 
 function groupWordsIntoLines(words) {
@@ -256,7 +167,7 @@ function groupWordsIntoLines(words) {
   words.forEach(word => {
     const wordY = word.bbox.y0;
 
-    if (currentY === null || Math.abs(wordY - currentY) < 15) { // Adjust proximity threshold if needed
+    if (currentY === null || Math.abs(wordY - currentY) < 10) {
       currentLine.push(word);
     } else {
       lines.push(currentLine);
@@ -273,13 +184,14 @@ function groupWordsIntoLines(words) {
   return lines;
 }
 
-// Updated detectSpeechBubbles function
-async function detectSpeechBubbles(panelBlob) {
+
+function detectSpeechBubbles(panelImage) {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.src = URL.createObjectURL(panelBlob);
+    img.src = URL.createObjectURL(panelImage);
 
     img.onload = () => {
+      // Create canvas and get image data
       const canvas = document.createElement("canvas");
       canvas.width = img.width;
       canvas.height = img.height;
@@ -287,21 +199,24 @@ async function detectSpeechBubbles(panelBlob) {
       ctx.drawImage(img, 0, 0);
 
       // Convert canvas to OpenCV Mat
-      const src = cv.imread(canvas);
-      const gray = new cv.Mat();
-      const thresh = new cv.Mat();
-      const contours = new cv.MatVector();
-      const hierarchy = new cv.Mat();
+      let src = cv.imread(canvas);
+      let gray = new cv.Mat();
+      let thresh = new cv.Mat();
+      let contours = new cv.MatVector();
+      let hierarchy = new cv.Mat();
 
       // Convert to grayscale
       cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
+
+      // Apply median blur to reduce noise
+      cv.medianBlur(gray, gray, 5);
 
       // Apply adaptive thresholding
       cv.adaptiveThreshold(
         gray,
         thresh,
         255,
-        cv.ADAPTIVE_THRESH_MEAN_C,
+        cv.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv.THRESH_BINARY_INV,
         11,
         2
@@ -312,15 +227,17 @@ async function detectSpeechBubbles(panelBlob) {
 
       const bubbles = [];
       const minArea = 500; // Minimum area to be considered a speech bubble
-      const maxArea = (img.width * img.height) / 3; // Max area to filter out large regions
+      const maxArea = (img.width * img.height) / 2; // Max area to filter out large regions
 
       for (let i = 0; i < contours.size(); ++i) {
         const cnt = contours.get(i);
         const rect = cv.boundingRect(cnt);
+        const aspectRatio = rect.width / rect.height;
         const area = cv.contourArea(cnt);
 
-        // Filter based on area
-        if (area > minArea && area < maxArea) {
+        // Filter based on area and aspect ratio
+        if (area > minArea && area < maxArea && aspectRatio > 0.5 && aspectRatio < 1.5) {
+          // Potential speech bubble
           const bubbleCanvas = document.createElement("canvas");
           bubbleCanvas.width = rect.width;
           bubbleCanvas.height = rect.height;
