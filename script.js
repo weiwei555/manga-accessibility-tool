@@ -143,47 +143,15 @@ async function extractTextFromSpeechBubbles(panelBlob) {
 
   for (const bubbleCanvas of speechBubbles) {
     // Run OCR on each speech bubble
-    const { data: { words } } = await Tesseract.recognize(bubbleCanvas, "eng", {
+    const { data: { text } } = await Tesseract.recognize(bubbleCanvas, "eng", {
       logger: (m) => console.log(m),
     });
-
-    // Group words by their bounding boxes to form lines of text
-    const lines = groupWordsIntoLines(words);
-
-    // Combine lines into a single string
-    const text = lines.map(line => line.map(word => word.text).join(' ')).join('\n');
 
     ocrTexts.push(text.trim());
   }
 
   return ocrTexts;
 }
-
-function groupWordsIntoLines(words) {
-  const lines = [];
-  let currentLine = [];
-  let currentY = null;
-
-  words.forEach(word => {
-    const wordY = word.bbox.y0;
-
-    if (currentY === null || Math.abs(wordY - currentY) < 10) {
-      currentLine.push(word);
-    } else {
-      lines.push(currentLine);
-      currentLine = [word];
-    }
-
-    currentY = wordY;
-  });
-
-  if (currentLine.length > 0) {
-    lines.push(currentLine);
-  }
-
-  return lines;
-}
-
 
 function detectSpeechBubbles(panelImage) {
   return new Promise((resolve, reject) => {
