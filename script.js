@@ -82,6 +82,44 @@ async function handleImage(file) {
   }
 }
 
+function preprocessImage(imageBlob) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.src = URL.createObjectURL(imageBlob);
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0);
+
+      // Convert to grayscale
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+        data[i] = avg; // Red
+        data[i + 1] = avg; // Green
+        data[i + 2] = avg; // Blue
+      }
+      ctx.putImageData(imageData, 0, 0);
+
+      // Apply a basic binary threshold
+      for (let i = 0; i < data.length; i += 4) {
+        const brightness = data[i];
+        const threshold = 128; // Threshold value (adjustable)
+        const value = brightness < threshold ? 0 : 255;
+        data[i] = data[i + 1] = data[i + 2] = value; // Apply binary threshold
+      }
+      ctx.putImageData(imageData, 0, 0);
+
+      // Convert canvas back to blob
+      canvas.toBlob(resolve, imageBlob.type);
+    };
+    img.onerror = reject;
+  });
+}
+
 async function generateDescriptionWithHuggingFace(imageBlob) {
   const apiUrl = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-large";
   const apiKey = "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"; // Replace with your actual API key
@@ -142,22 +180,23 @@ async function extractTextFromSpeechBubbles(panelBlob) {
   const ocrTexts = [];
 
   for (const bubbleCanvas of speechBubbles) {
-    // Run OCR on each speech bubble
-    const { data: { words } } = await Tesseract.recognize(bubbleCanvas, "eng", {
+    // Convert bubbleCanvas to a blob for preprocessing
+    const blob = await new Promise((resolve) => bubbleCanvas.toBlob(resolve));
+
+    // Preprocess the image
+    const preprocessedBlob = await preprocessImage(blob);
+
+    // Run OCR on the preprocessed image
+    const { data: { text } } = await Tesseract.recognize(preprocessedBlob, "eng", {
       logger: (m) => console.log(m),
     });
-
-    // Group words by their bounding boxes to form lines of text
-    const lines = groupWordsIntoLines(words);
-
-    // Combine lines into a single string
-    const text = lines.map(line => line.map(word => word.text).join(' ')).join('\n');
 
     ocrTexts.push(text.trim());
   }
 
   return ocrTexts;
 }
+
 
 function groupWordsIntoLines(words) {
   const lines = [];
@@ -167,7 +206,7 @@ function groupWordsIntoLines(words) {
   words.forEach(word => {
     const wordY = word.bbox.y0;
 
-    if (currentY === null || Math.abs(wordY - currentY) < 10) {
+    if (currentY === null || Math.abs(wordY - currentY) < 10) { // Adjust line proximity threshold
       currentLine.push(word);
     } else {
       lines.push(currentLine);
