@@ -138,107 +138,128 @@ function blobToBase64(blob) {
 }
 
 async function extractTextFromSpeechBubbles(panelBlob) {
-  const speechBubbles = await detectSpeechBubbles(panelBlob);
-  const ocrTexts = [];
+  const bubbleRegions = await detectSpeechBubbles(panelBlob); // Detect speech bubble regions
+  const extractedTexts = [];
 
-  for (const bubbleCanvas of speechBubbles) {
-    // Run OCR on each speech bubble
-    const { data: { text } } = await Tesseract.recognize(bubbleCanvas, "eng", {
-      logger: (m) => console.log(m),
-    });
-
-    ocrTexts.push(text.trim());
+  for (const region of bubbleRegions) {
+    try {
+      // Process and run OCR on each detected bubble region
+      const processedRegion = await preprocessBubbleRegion(region);
+      const { data: { text } } = await Tesseract.recognize(processedRegion, "eng", {
+        logger: (info) => console.log(info), // Log OCR progress
+      });
+      extractedTexts.push(text.trim());
+    } catch (error) {
+      console.error("Error processing bubble region:", error);
+      extractedTexts.push("[Unable to extract text]");
+    }
   }
 
-  return ocrTexts;
+  return extractedTexts;
 }
 
-function detectSpeechBubbles(panelImage) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.src = URL.createObjectURL(panelImage);
+async function preprocessBubbleRegion(regionCanvas) {
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  canvas.width = regionCanvas.width;
+  canvas.height = regionCanvas.height;
 
-    img.onload = () => {
-      // Create canvas and get image data
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(img, 0, 0);
+  // Draw the region onto the canvas
+  ctx.drawImage(regionCanvas, 0, 0);
 
-      // Convert canvas to OpenCV Mat
-      let src = cv.imread(canvas);
-      let gray = new cv.Mat();
-      let thresh = new cv.Mat();
-      let contours = new cv.MatVector();
-      let hierarchy = new cv.Mat();
+  // Convert to grayscale
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const grayValue = 0.3 * data[i] + 0.59 * data[i + 1] + 0.11 * data[i + 2];
+    data[i] = data[i + 1] = data[i + 2] = grayValue; // Set RGB to grayscale
+  }
+  ctx.putImageData(imageData, 0, 0);
 
-      // Convert to grayscale
-      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
+  // Apply binary thresholding
+  const threshold = 128;
+  for (let i = 0; i < data.length; i += 4) {
+    const binaryValue = data[i] > threshold ? 255 : 0;
+    data[i] = data[i + 1] = data[i + 2] = binaryValue; // Binary threshold
+  }
+  ctx.putImageData(imageData, 0, 0);
 
-      // Apply median blur to reduce noise
-      cv.medianBlur(gray, gray, 5);
+  return new Promise((resolve) => canvas.toBlob(resolve));
+}
 
-      // Apply adaptive thresholding
-      cv.adaptiveThreshold(
-        gray,
-        thresh,
-        255,
-        cv.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv.THRESH_BINARY_INV,
-        11,
-        2
+
+async function detectSpeechBubbles(panelBlob) {
+  const img = await createImageFromBlob(panelBlob);
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  canvas.width = img.width;
+  canvas.height = img.height;
+  ctx.drawImage(img, 0, 0);
+
+  const src = cv.imread(canvas);
+  const gray = new cv.Mat();
+  const thresh = new cv.Mat();
+  const contours = new cv.MatVector();
+  const hierarchy = new cv.Mat();
+
+  // Convert to grayscale
+  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+  // Apply adaptive thresholding
+  cv.adaptiveThreshold(
+    gray,
+    thresh,
+    255,
+    cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+    cv.THRESH_BINARY_INV,
+    11,
+    2
+  );
+
+  // Find contours
+  cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+  const bubbleRegions = [];
+  const minArea = 1000; // Minimum area to consider
+  const maxArea = (img.width * img.height) / 3;
+
+  for (let i = 0; i < contours.size(); i++) {
+    const cnt = contours.get(i);
+    const rect = cv.boundingRect(cnt);
+    const area = rect.width * rect.height;
+
+    if (area > minArea && area < maxArea) {
+      const bubbleCanvas = document.createElement("canvas");
+      bubbleCanvas.width = rect.width;
+      bubbleCanvas.height = rect.height;
+      const bubbleCtx = bubbleCanvas.getContext("2d");
+      bubbleCtx.drawImage(
+        img,
+        rect.x,
+        rect.y,
+        rect.width,
+        rect.height,
+        0,
+        0,
+        rect.width,
+        rect.height
       );
+      bubbleRegions.push(bubbleCanvas);
+    }
 
-      // Find contours
-      cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+    cnt.delete();
+  }
 
-      const bubbles = [];
-      const minArea = 500; // Minimum area to be considered a speech bubble
-      const maxArea = (img.width * img.height) / 2; // Max area to filter out large regions
+  // Clean up
+  src.delete();
+  gray.delete();
+  thresh.delete();
+  contours.delete();
+  hierarchy.delete();
 
-      for (let i = 0; i < contours.size(); ++i) {
-        const cnt = contours.get(i);
-        const rect = cv.boundingRect(cnt);
-        const aspectRatio = rect.width / rect.height;
-        const area = cv.contourArea(cnt);
-
-        // Filter based on area and aspect ratio
-        if (area > minArea && area < maxArea && aspectRatio > 0.5 && aspectRatio < 1.5) {
-          // Potential speech bubble
-          const bubbleCanvas = document.createElement("canvas");
-          bubbleCanvas.width = rect.width;
-          bubbleCanvas.height = rect.height;
-          const bubbleCtx = bubbleCanvas.getContext("2d");
-          bubbleCtx.drawImage(
-            img,
-            rect.x,
-            rect.y,
-            rect.width,
-            rect.height,
-            0,
-            0,
-            rect.width,
-            rect.height
-          );
-          bubbles.push(bubbleCanvas);
-        }
-        cnt.delete();
-      }
-
-      // Clean up
-      src.delete();
-      gray.delete();
-      thresh.delete();
-      contours.delete();
-      hierarchy.delete();
-
-      resolve(bubbles);
-    };
-
-    img.onerror = reject;
-  });
+  return bubbleRegions;
 }
+
 
 function segmentPanels(imageBlob) {
   return new Promise((resolve, reject) => {
