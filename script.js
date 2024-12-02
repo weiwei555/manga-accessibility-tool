@@ -187,77 +187,99 @@ async function preprocessBubbleRegion(regionCanvas) {
   return new Promise((resolve) => canvas.toBlob(resolve));
 }
 
+function detectSpeechBubbles(panelImage) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.src = URL.createObjectURL(panelImage);
 
-async function detectSpeechBubbles(panelBlob) {
-  const img = await createImageFromBlob(panelBlob);
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d");
-  canvas.width = img.width;
-  canvas.height = img.height;
-  ctx.drawImage(img, 0, 0);
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0);
 
-  const src = cv.imread(canvas);
-  const gray = new cv.Mat();
-  const thresh = new cv.Mat();
-  const contours = new cv.MatVector();
-  const hierarchy = new cv.Mat();
+      const src = cv.imread(canvas);
+      const gray = new cv.Mat();
+      const thresh = new cv.Mat();
+      const contours = new cv.MatVector();
+      const hierarchy = new cv.Mat();
 
-  // Convert to grayscale
-  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      // Convert to grayscale
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
 
-  // Apply adaptive thresholding
-  cv.adaptiveThreshold(
-    gray,
-    thresh,
-    255,
-    cv.ADAPTIVE_THRESH_GAUSSIAN_C,
-    cv.THRESH_BINARY_INV,
-    11,
-    2
-  );
-
-  // Find contours
-  cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-  const bubbleRegions = [];
-  const minArea = 1000; // Minimum area to consider
-  const maxArea = (img.width * img.height) / 3;
-
-  for (let i = 0; i < contours.size(); i++) {
-    const cnt = contours.get(i);
-    const rect = cv.boundingRect(cnt);
-    const area = rect.width * rect.height;
-
-    if (area > minArea && area < maxArea) {
-      const bubbleCanvas = document.createElement("canvas");
-      bubbleCanvas.width = rect.width;
-      bubbleCanvas.height = rect.height;
-      const bubbleCtx = bubbleCanvas.getContext("2d");
-      bubbleCtx.drawImage(
-        img,
-        rect.x,
-        rect.y,
-        rect.width,
-        rect.height,
-        0,
-        0,
-        rect.width,
-        rect.height
+      // Apply adaptive thresholding
+      cv.adaptiveThreshold(
+        gray,
+        thresh,
+        255,
+        cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv.THRESH_BINARY_INV,
+        11,
+        2
       );
-      bubbleRegions.push(bubbleCanvas);
-    }
 
-    cnt.delete();
-  }
+      // Find contours
+      cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-  // Clean up
-  src.delete();
-  gray.delete();
-  thresh.delete();
-  contours.delete();
-  hierarchy.delete();
+      const debugCanvas = document.createElement("canvas");
+      debugCanvas.width = canvas.width;
+      debugCanvas.height = canvas.height;
+      const debugCtx = debugCanvas.getContext("2d");
+      debugCtx.drawImage(img, 0, 0);
 
-  return bubbleRegions;
+      const bubbles = [];
+      const minArea = 500; // Minimum area to be considered a speech bubble
+      const maxArea = (img.width * img.height) / 2; // Max area to filter out large regions
+
+      for (let i = 0; i < contours.size(); ++i) {
+        const cnt = contours.get(i);
+        const rect = cv.boundingRect(cnt);
+        const area = cv.contourArea(cnt);
+
+        if (area > minArea && area < maxArea) {
+          // Draw the rectangle for debugging
+          debugCtx.strokeStyle = "red";
+          debugCtx.lineWidth = 2;
+          debugCtx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+
+          // Extract bubble region
+          const bubbleCanvas = document.createElement("canvas");
+          bubbleCanvas.width = rect.width;
+          bubbleCanvas.height = rect.height;
+          const bubbleCtx = bubbleCanvas.getContext("2d");
+          bubbleCtx.drawImage(
+            img,
+            rect.x,
+            rect.y,
+            rect.width,
+            rect.height,
+            0,
+            0,
+            rect.width,
+            rect.height
+          );
+          bubbles.push(bubbleCanvas);
+        }
+
+        cnt.delete();
+      }
+
+      // Append debug canvas for visualization
+      document.getElementById("manga-page-container").appendChild(debugCanvas);
+
+      // Clean up
+      src.delete();
+      gray.delete();
+      thresh.delete();
+      contours.delete();
+      hierarchy.delete();
+
+      resolve(bubbles);
+    };
+
+    img.onerror = reject;
+  });
 }
 
 
