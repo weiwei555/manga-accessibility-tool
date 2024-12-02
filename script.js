@@ -198,22 +198,22 @@ function detectSpeechBubbles(panelImage) {
       const ctx = canvas.getContext("2d");
       ctx.drawImage(img, 0, 0);
 
-      // Convert canvas to OpenCV Mat
-      let src = cv.imread(canvas);
-      let gray = new cv.Mat();
-      let thresh = new cv.Mat();
-      let contours = new cv.MatVector();
-      let hierarchy = new cv.Mat();
+      const src = cv.imread(canvas);
+      const gray = new cv.Mat();
+      const blurred = new cv.Mat();
+      const thresh = new cv.Mat();
+      const contours = new cv.MatVector();
+      const hierarchy = new cv.Mat();
 
       // Convert to grayscale
       cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
 
-      // Apply median blur to reduce noise
-      cv.medianBlur(gray, gray, 5);
+      // Apply Gaussian blur to reduce noise
+      cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
 
       // Apply adaptive thresholding
       cv.adaptiveThreshold(
-        gray,
+        blurred,
         thresh,
         255,
         cv.ADAPTIVE_THRESH_GAUSSIAN_C,
@@ -226,8 +226,8 @@ function detectSpeechBubbles(panelImage) {
       cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
       const bubbles = [];
-      const minArea = 500; // Minimum area to be considered a speech bubble
-      const maxArea = (img.width * img.height) / 2; // Max area to filter out large regions
+      const minArea = 1000; // Minimum area for a speech bubble
+      const maxArea = (img.width * img.height) / 2; // Max area for a speech bubble
 
       // Create a debug canvas to visualize detected bubbles
       const debugCanvas = document.createElement("canvas");
@@ -242,8 +242,18 @@ function detectSpeechBubbles(panelImage) {
         const aspectRatio = rect.width / rect.height;
         const area = cv.contourArea(cnt);
 
-        // Filter based on area and aspect ratio
-        if (area > minArea && area < maxArea && aspectRatio > 0.5 && aspectRatio < 1.5) {
+        // Approximate contour to check for smoothness
+        const approx = new cv.Mat();
+        cv.approxPolyDP(cnt, approx, 0.02 * cv.arcLength(cnt, true), true);
+
+        // Filter based on area, aspect ratio, and smoothness
+        if (
+          area > minArea &&
+          area < maxArea &&
+          aspectRatio > 0.5 &&
+          aspectRatio < 1.5 &&
+          approx.rows >= 4 // Check for rounded shapes
+        ) {
           // Draw a rectangle on the debug canvas
           debugCtx.strokeStyle = "red";
           debugCtx.lineWidth = 2;
@@ -267,7 +277,9 @@ function detectSpeechBubbles(panelImage) {
           );
           bubbles.push(bubbleCanvas);
         }
+
         cnt.delete();
+        approx.delete();
       }
 
       // Append the debug canvas to visualize the detected bubbles
@@ -279,6 +291,7 @@ function detectSpeechBubbles(panelImage) {
       // Clean up
       src.delete();
       gray.delete();
+      blurred.delete();
       thresh.delete();
       contours.delete();
       hierarchy.delete();
@@ -289,6 +302,7 @@ function detectSpeechBubbles(panelImage) {
     img.onerror = reject;
   });
 }
+
 
 
 function segmentPanels(imageBlob) {
