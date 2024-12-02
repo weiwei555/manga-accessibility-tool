@@ -226,35 +226,32 @@ function groupWordsIntoLines(words) {
 async function detectSpeechBubbles(panelBlob) {
   return new Promise((resolve, reject) => {
     try {
-      // Load the image
       const img = new Image();
       img.src = URL.createObjectURL(panelBlob);
 
       img.onload = async () => {
-        // Create a canvas for the original image
         const canvas = document.createElement("canvas");
         canvas.width = img.width;
         canvas.height = img.height;
         const ctx = canvas.getContext("2d");
         ctx.drawImage(img, 0, 0);
 
-        // Prepare OpenCV.js structures
+        // OpenCV structures
         const src = cv.imread(canvas);
         const gray = new cv.Mat();
         const edges = new cv.Mat();
         const contours = new cv.MatVector();
         const hierarchy = new cv.Mat();
 
-        // Convert to grayscale
+        // Grayscale conversion
         cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
 
-        // Apply Canny edge detection to detect edges
+        // Edge detection using Canny
         cv.Canny(gray, edges, 50, 150);
 
-        // Find contours
+        // Finding contours
         cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-        // Debug canvas to show detected bubbles
         const debugCanvas = document.createElement("canvas");
         debugCanvas.width = canvas.width;
         debugCanvas.height = canvas.height;
@@ -264,38 +261,40 @@ async function detectSpeechBubbles(panelBlob) {
         debugCtx.lineWidth = 2;
 
         const bubbles = [];
-
-        // Process contours to detect speech bubbles
-        for (let i = 0; i < contours.size(); ++i) {
+        for (let i = 0; i < contours.size(); i++) {
           const cnt = contours.get(i);
           const rect = cv.boundingRect(cnt);
           const area = cv.contourArea(cnt);
 
-          // Filter based on area
-          if (area > 500 && area < (img.width * img.height) / 2) {
-            // Draw rectangle on debug canvas
-            debugCtx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+          // Filter contours by area
+          if (area > 800 && area < (img.width * img.height) / 2) {
+            // Slightly expand the detected rectangle
+            const expandedRect = {
+              x: Math.max(rect.x - 10, 0),
+              y: Math.max(rect.y - 10, 0),
+              width: Math.min(rect.width + 20, img.width - rect.x),
+              height: Math.min(rect.height + 20, img.height - rect.y),
+            };
 
-            // Create a canvas for the bubble region
+            debugCtx.strokeRect(expandedRect.x, expandedRect.y, expandedRect.width, expandedRect.height);
+
+            // Extract bubble region
             const bubbleCanvas = document.createElement("canvas");
-            bubbleCanvas.width = rect.width;
-            bubbleCanvas.height = rect.height;
+            bubbleCanvas.width = expandedRect.width;
+            bubbleCanvas.height = expandedRect.height;
             const bubbleCtx = bubbleCanvas.getContext("2d");
-
-            // Draw the bubble region onto the bubble canvas
             bubbleCtx.drawImage(
               img,
-              rect.x,
-              rect.y,
-              rect.width,
-              rect.height,
+              expandedRect.x,
+              expandedRect.y,
+              expandedRect.width,
+              expandedRect.height,
               0,
               0,
-              rect.width,
-              rect.height
+              expandedRect.width,
+              expandedRect.height
             );
 
-            // Add the bubble canvas to the result
             bubbles.push(bubbleCanvas);
           }
           cnt.delete();
@@ -307,7 +306,7 @@ async function detectSpeechBubbles(panelBlob) {
         document.getElementById("manga-page-container").appendChild(debugTitle);
         document.getElementById("manga-page-container").appendChild(debugCanvas);
 
-        // Clean up OpenCV resources
+        // Cleanup OpenCV resources
         src.delete();
         gray.delete();
         edges.delete();
@@ -324,6 +323,7 @@ async function detectSpeechBubbles(panelBlob) {
     }
   });
 }
+
 
 
 function segmentPanels(imageBlob) {
