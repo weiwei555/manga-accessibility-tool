@@ -180,14 +180,11 @@ async function extractTextFromSpeechBubbles(panelBlob) {
   const ocrTexts = [];
 
   for (const bubbleCanvas of speechBubbles) {
-    // Convert canvas to blob
-    const blob = await new Promise((resolve) => bubbleCanvas.toBlob(resolve));
+    // Preprocess the canvas image directly
+    const preprocessedCanvas = preprocessImage(bubbleCanvas);
 
-    // Preprocess the image
-    const preprocessedBlob = await preprocessImage(blob);
-
-    // Run OCR on the preprocessed image
-    const { data: { text } } = await Tesseract.recognize(preprocessedBlob, "eng", {
+    // Run OCR on the preprocessed canvas
+    const { data: { text } } = await Tesseract.recognize(preprocessedCanvas, "eng", {
       logger: (m) => console.log(m),
     });
 
