@@ -191,13 +191,14 @@ function detectSpeechBubbles(panelImage) {
     img.src = URL.createObjectURL(panelImage);
 
     img.onload = () => {
-      // Create canvas and get image data
+      // Create a canvas for the original image
       const canvas = document.createElement("canvas");
       canvas.width = img.width;
       canvas.height = img.height;
       const ctx = canvas.getContext("2d");
       ctx.drawImage(img, 0, 0);
 
+      // Convert canvas to OpenCV Mat
       const src = cv.imread(canvas);
       const gray = new cv.Mat();
       const blurred = new cv.Mat();
@@ -211,7 +212,7 @@ function detectSpeechBubbles(panelImage) {
       // Apply Gaussian blur to reduce noise
       cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
 
-      // Apply adaptive thresholding
+      // Apply adaptive thresholding to detect bubble regions
       cv.adaptiveThreshold(
         blurred,
         thresh,
@@ -226,40 +227,36 @@ function detectSpeechBubbles(panelImage) {
       cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
       const bubbles = [];
-      const minArea = 1000; // Minimum area for a speech bubble
-      const maxArea = (img.width * img.height) / 2; // Max area for a speech bubble
+      const minArea = 500; // Minimum area to consider a bubble
+      const maxArea = (img.width * img.height) / 2; // Max area to consider a bubble
 
-      // Create a debug canvas to visualize detected bubbles
+      // Create a debug canvas
       const debugCanvas = document.createElement("canvas");
       debugCanvas.width = canvas.width;
       debugCanvas.height = canvas.height;
       const debugCtx = debugCanvas.getContext("2d");
       debugCtx.drawImage(img, 0, 0);
 
+      // Process contours
       for (let i = 0; i < contours.size(); ++i) {
         const cnt = contours.get(i);
         const rect = cv.boundingRect(cnt);
-        const aspectRatio = rect.width / rect.height;
         const area = cv.contourArea(cnt);
+        const aspectRatio = rect.width / rect.height;
 
-        // Approximate contour to check for smoothness
-        const approx = new cv.Mat();
-        cv.approxPolyDP(cnt, approx, 0.02 * cv.arcLength(cnt, true), true);
-
-        // Filter based on area, aspect ratio, and smoothness
+        // Filter based on size and aspect ratio
         if (
           area > minArea &&
           area < maxArea &&
           aspectRatio > 0.5 &&
-          aspectRatio < 1.5 &&
-          approx.rows >= 4 // Check for rounded shapes
+          aspectRatio < 1.5
         ) {
-          // Draw a rectangle on the debug canvas
+          // Draw rectangles on debug canvas
           debugCtx.strokeStyle = "red";
           debugCtx.lineWidth = 2;
           debugCtx.strokeRect(rect.x, rect.y, rect.width, rect.height);
 
-          // Extract the speech bubble region
+          // Extract bubble regions
           const bubbleCanvas = document.createElement("canvas");
           bubbleCanvas.width = rect.width;
           bubbleCanvas.height = rect.height;
@@ -279,10 +276,9 @@ function detectSpeechBubbles(panelImage) {
         }
 
         cnt.delete();
-        approx.delete();
       }
 
-      // Append the debug canvas to visualize the detected bubbles
+      // Display the debug image in the DOM
       const debugTitle = document.createElement("h3");
       debugTitle.textContent = "Detected Speech Bubbles (Debug View):";
       document.getElementById("manga-page-container").appendChild(debugTitle);
@@ -302,6 +298,7 @@ function detectSpeechBubbles(panelImage) {
     img.onerror = reject;
   });
 }
+
 
 
 
