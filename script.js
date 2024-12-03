@@ -175,8 +175,18 @@ function blobToBase64(blob) {
   });
 }
 
+function drawDebugBoxes(canvas, boxes, color) {
+  const ctx = canvas.getContext("2d");
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+
+  boxes.forEach(box => {
+    ctx.strokeRect(box.x, box.y, box.width, box.height);
+  });
+}
+
 async function extractTextFromSpeechBubbles(imageBlob) {
-  const textRegions = await detectTextRegions(imageBlob);
+  const textRegions = await detectTextAndBubbles(imageBlob);
 
   const img = new Image();
   img.src = URL.createObjectURL(imageBlob);
@@ -188,30 +198,36 @@ async function extractTextFromSpeechBubbles(imageBlob) {
   const debugCtx = debugCanvas.getContext("2d");
   debugCtx.drawImage(img, 0, 0);
 
-  const ocrResults = [];
-  for (const region of textRegions) {
-    const { x, y, width, height } = region;
-
-    // Draw debug rectangle for visualization
+  textRegions.forEach(region => {
     debugCtx.strokeStyle = "red";
     debugCtx.lineWidth = 2;
-    debugCtx.strokeRect(x, y, width, height);
+    debugCtx.strokeRect(region.x, region.y, region.width, region.height);
+  });
 
-    // Extract the region from the original image
+  // Append debug canvas to DOM for visualization
+  const debugTitle = document.createElement("h3");
+  debugTitle.textContent = "Debug Image for Text Regions:";
+  document.getElementById("manga-page-container").appendChild(debugTitle);
+  document.getElementById("manga-page-container").appendChild(debugCanvas);
+
+  const ocrResults = [];
+  for (const region of textRegions) {
     const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
+    canvas.width = region.width;
+    canvas.height = region.height;
     const ctx = canvas.getContext("2d");
-    ctx.drawImage(img, x, y, width, height, 0, 0, width, height);
+    ctx.drawImage(img, region.x, region.y, region.width, region.height, 0, 0, region.width, region.height);
 
-    // Convert to blob and run OCR
-    const blob = await new Promise(resolve => canvas.toBlob(resolve));
-    const { data: { text } } = await Tesseract.recognize(blob, "eng", {
-      logger: (m) => console.log(m),
+    const preprocessedBlob = await preprocessImageForOCR(canvas);
+    const { data: { text } } = await Tesseract.recognize(preprocessedBlob, "eng", {
+      logger: m => console.log(m),
     });
 
     ocrResults.push(text.trim());
   }
+
+  return ocrResults;
+}
 
   // Append final debug canvas to DOM
   const debugTitle = document.createElement("h3");
@@ -221,18 +237,6 @@ async function extractTextFromSpeechBubbles(imageBlob) {
 
   return ocrResults;
 }
-
-
-function drawDebugBoxes(canvas, boxes, color) {
-  const ctx = canvas.getContext("2d");
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 2;
-
-  boxes.forEach(box => {
-    ctx.strokeRect(box.x, box.y, box.width, box.height);
-  });
-}
-
 
 function groupWordsIntoLines(words) {
   const lines = [];
