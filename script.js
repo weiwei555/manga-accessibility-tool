@@ -85,27 +85,34 @@ async function handleImage(file) {
 function preprocessImageForOCR(imageCanvas) {
   return new Promise((resolve, reject) => {
     const canvas = document.createElement("canvas");
-    canvas.width = imageCanvas.width * 2; // Scale up for better OCR accuracy
-    canvas.height = imageCanvas.height * 2;
+    canvas.width = imageCanvas.width * 3; // Aggressively scale up
+    canvas.height = imageCanvas.height * 3;
     const ctx = canvas.getContext("2d");
 
     ctx.drawImage(imageCanvas, 0, 0, canvas.width, canvas.height);
 
-    // Convert to grayscale and apply binarization
+    // Convert to grayscale
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const data = imageData.data;
     for (let i = 0; i < data.length; i += 4) {
       const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-      const binary = avg < 128 ? 0 : 255;
-      data[i] = binary; // Red
-      data[i + 1] = binary; // Green
-      data[i + 2] = binary; // Blue
+      data[i] = data[i + 1] = data[i + 2] = avg; // Grayscale
+    }
+    ctx.putImageData(imageData, 0, 0);
+
+    // Apply adaptive binary thresholding
+    for (let i = 0; i < data.length; i += 4) {
+      const brightness = data[i];
+      const threshold = 128; // Adjust threshold dynamically if needed
+      const value = brightness < threshold ? 0 : 255;
+      data[i] = data[i + 1] = data[i + 2] = value; // Binary
     }
     ctx.putImageData(imageData, 0, 0);
 
     canvas.toBlob(resolve, "image/png");
   });
 }
+
 
 
 async function generateDescriptionWithHuggingFace(imageBlob) {
@@ -319,7 +326,7 @@ async function extractTextFromSpeechBubbles(imageBlob) {
     debugCtx.strokeRect(region.x, region.y, region.width, region.height);
   });
 
-  // Append the debug canvas to DOM
+  // Append the debug canvas to DOM for visualization
   const debugTitle = document.createElement("h3");
   debugTitle.textContent = "Debug Image for Text Regions:";
   document.getElementById("manga-page-container").appendChild(debugTitle);
@@ -328,6 +335,9 @@ async function extractTextFromSpeechBubbles(imageBlob) {
   const ocrResults = [];
   for (const bubble of speechBubbles) {
     const { x, y, width, height } = bubble;
+
+    // Skip regions that are too large
+    if (width * height > 100000) continue;
 
     // Extract the region for OCR
     const canvas = document.createElement("canvas");
@@ -338,15 +348,21 @@ async function extractTextFromSpeechBubbles(imageBlob) {
 
     // Preprocess the image for OCR
     const preprocessedBlob = await preprocessImageForOCR(canvas);
-    const { data: { text } } = await Tesseract.recognize(preprocessedBlob, "eng", {
-      logger: m => console.log(m),
-    });
 
-    ocrResults.push(text.trim());
+    // Perform OCR
+    try {
+      const { data: { text } } = await Tesseract.recognize(preprocessedBlob, "eng", {
+        logger: m => console.log(m),
+      });
+      ocrResults.push(text.trim());
+    } catch (err) {
+      console.error("OCR Error:", err);
+    }
   }
 
   return ocrResults;
 }
+
 
 
 function segmentPanels(imageBlob) {
