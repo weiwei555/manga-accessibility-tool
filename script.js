@@ -66,7 +66,7 @@ async function handleImage(file) {
 
       console.log("OCR texts extracted:", ocrTexts);
 
-      // Combine the description and OCR texts with an extra newline
+      // Combine the description and OCR texts
       const combinedDescription = `${description}\n\nDialog:\n${ocrTexts.join('\n')}`;
 
       // Display the description
@@ -82,43 +82,31 @@ async function handleImage(file) {
   }
 }
 
-function preprocessImage(imageBlob) {
+function preprocessImageForOCR(imageCanvas) {
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.src = URL.createObjectURL(imageBlob);
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(img, 0, 0);
+    const canvas = document.createElement("canvas");
+    canvas.width = imageCanvas.width * 2; // Scale up for better OCR accuracy
+    canvas.height = imageCanvas.height * 2;
+    const ctx = canvas.getContext("2d");
 
-      // Convert to grayscale
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imageData.data;
-      for (let i = 0; i < data.length; i += 4) {
-        const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-        data[i] = avg; // Red
-        data[i + 1] = avg; // Green
-        data[i + 2] = avg; // Blue
-      }
-      ctx.putImageData(imageData, 0, 0);
+    ctx.drawImage(imageCanvas, 0, 0, canvas.width, canvas.height);
 
-      // Apply a basic binary threshold
-      for (let i = 0; i < data.length; i += 4) {
-        const brightness = data[i];
-        const threshold = 128; // Threshold value (adjustable)
-        const value = brightness < threshold ? 0 : 255;
-        data[i] = data[i + 1] = data[i + 2] = value; // Apply binary threshold
-      }
-      ctx.putImageData(imageData, 0, 0);
+    // Convert to grayscale and apply binarization
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+      const binary = avg < 128 ? 0 : 255;
+      data[i] = binary; // Red
+      data[i + 1] = binary; // Green
+      data[i + 2] = binary; // Blue
+    }
+    ctx.putImageData(imageData, 0, 0);
 
-      // Convert canvas back to blob
-      canvas.toBlob(resolve, imageBlob.type);
-    };
-    img.onerror = reject;
+    canvas.toBlob(resolve, "image/png");
   });
 }
+
 
 async function generateDescriptionWithHuggingFace(imageBlob) {
   const apiUrl = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-large";
@@ -183,50 +171,6 @@ function drawDebugBoxes(canvas, boxes, color) {
   boxes.forEach(box => {
     ctx.strokeRect(box.x, box.y, box.width, box.height);
   });
-}
-
-async function extractTextFromSpeechBubbles(imageBlob) {
-  const textRegions = await detectTextAndBubbles(imageBlob);
-
-  const img = new Image();
-  img.src = URL.createObjectURL(imageBlob);
-  await img.decode();
-
-  const debugCanvas = document.createElement("canvas");
-  debugCanvas.width = img.width;
-  debugCanvas.height = img.height;
-  const debugCtx = debugCanvas.getContext("2d");
-  debugCtx.drawImage(img, 0, 0);
-
-  textRegions.forEach(region => {
-    debugCtx.strokeStyle = "red";
-    debugCtx.lineWidth = 2;
-    debugCtx.strokeRect(region.x, region.y, region.width, region.height);
-  });
-
-  // Append debug canvas to DOM for visualization
-  const debugTitle = document.createElement("h3");
-  debugTitle.textContent = "Debug Image for Text Regions:";
-  document.getElementById("manga-page-container").appendChild(debugTitle);
-  document.getElementById("manga-page-container").appendChild(debugCanvas);
-
-  const ocrResults = [];
-  for (const region of textRegions) {
-    const canvas = document.createElement("canvas");
-    canvas.width = region.width;
-    canvas.height = region.height;
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(img, region.x, region.y, region.width, region.height, 0, 0, region.width, region.height);
-
-    const preprocessedBlob = await preprocessImageForOCR(canvas);
-    const { data: { text } } = await Tesseract.recognize(preprocessedBlob, "eng", {
-      logger: m => console.log(m),
-    });
-
-    ocrResults.push(text.trim());
-  }
-
-  return ocrResults;
 }
 
 function groupWordsIntoLines(words) {
@@ -298,7 +242,7 @@ async function detectTextAndBubbles(imageBlob) {
       }
 
       // Extend bounding boxes slightly to capture entire bubbles
-      const expandedBubbles = speechBubbles.map((bubble) => ({
+      const expandedBubbles = speechBubbles.map(bubble => ({
         x: Math.max(0, bubble.x - 10),
         y: Math.max(0, bubble.y - 10),
         width: Math.min(src.cols - bubble.x, bubble.width + 20),
@@ -319,6 +263,7 @@ async function detectTextAndBubbles(imageBlob) {
     img.onerror = reject;
   });
 }
+
 
 function preprocessImageForOCR(image) {
   return new Promise((resolve, reject) => {
@@ -360,26 +305,44 @@ async function extractTextFromSpeechBubbles(imageBlob) {
   img.src = URL.createObjectURL(imageBlob);
   await img.decode();
 
+  // Create a debug canvas for visualization
+  const debugCanvas = document.createElement("canvas");
+  debugCanvas.width = img.width;
+  debugCanvas.height = img.height;
+  const debugCtx = debugCanvas.getContext("2d");
+  debugCtx.drawImage(img, 0, 0);
+
+  // Draw debug rectangles for speech bubbles
+  speechBubbles.forEach(region => {
+    debugCtx.strokeStyle = "red";
+    debugCtx.lineWidth = 2;
+    debugCtx.strokeRect(region.x, region.y, region.width, region.height);
+  });
+
+  // Append the debug canvas to DOM
+  const debugTitle = document.createElement("h3");
+  debugTitle.textContent = "Debug Image for Text Regions:";
+  document.getElementById("manga-page-container").appendChild(debugTitle);
+  document.getElementById("manga-page-container").appendChild(debugCanvas);
+
   const ocrResults = [];
   for (const bubble of speechBubbles) {
     const { x, y, width, height } = bubble;
 
-    // Extract the region from the original image
+    // Extract the region for OCR
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext("2d");
     ctx.drawImage(img, x, y, width, height, 0, 0, width, height);
 
-    // Preprocess the cropped image for better OCR
+    // Preprocess the image for OCR
     const preprocessedBlob = await preprocessImageForOCR(canvas);
-
-    // Perform OCR
     const { data: { text } } = await Tesseract.recognize(preprocessedBlob, "eng", {
-      logger: (m) => console.log(m),
+      logger: m => console.log(m),
     });
 
-    ocrResults.push({ bubble, text: text.trim() });
+    ocrResults.push(text.trim());
   }
 
   return ocrResults;
