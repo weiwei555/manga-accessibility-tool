@@ -229,15 +229,6 @@ async function extractTextFromSpeechBubbles(imageBlob) {
   return ocrResults;
 }
 
-  // Append final debug canvas to DOM
-  const debugTitle = document.createElement("h3");
-  debugTitle.textContent = "Debug View: Detected Text Regions";
-  document.getElementById("manga-page-container").appendChild(debugTitle);
-  document.getElementById("manga-page-container").appendChild(debugCanvas);
-
-  return ocrResults;
-}
-
 function groupWordsIntoLines(words) {
   const lines = [];
   let currentLine = [];
