@@ -259,7 +259,7 @@ function groupWordsIntoLines(words) {
   return lines;
 }
 
-function detectTextRegions(imageBlob) {
+async function detectTextAndBubbles(imageBlob) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.src = URL.createObjectURL(imageBlob);
@@ -283,25 +283,32 @@ function detectTextRegions(imageBlob) {
       // Apply adaptive thresholding
       cv.adaptiveThreshold(gray, binary, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 11, 2);
 
-      // Morphological operation to remove small noise
-      const kernel = cv.Mat.ones(2, 2, cv.CV_8UC1);
+      // Morphological transformation to group nearby contours
+      const kernel = cv.Mat.ones(3, 3, cv.CV_8UC1);
       cv.morphologyEx(binary, binary, cv.MORPH_CLOSE, kernel);
 
       // Find contours
       cv.findContours(binary, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-      const textRegions = [];
+      const speechBubbles = [];
       for (let i = 0; i < contours.size(); i++) {
         const rect = cv.boundingRect(contours.get(i));
         const { x, y, width, height } = rect;
 
-        // Filter contours by area and aspect ratio
+        // Filter by area and aspect ratio
         const area = width * height;
-        const aspectRatio = width / height;
-        if (area > 100 && area < 10000 && aspectRatio > 0.2 && aspectRatio < 5) {
-          textRegions.push({ x, y, width, height });
+        if (area > 100 && width > 10 && height > 10) {
+          speechBubbles.push({ x, y, width, height });
         }
       }
+
+      // Extend bounding boxes slightly to capture entire bubbles
+      const expandedBubbles = speechBubbles.map((bubble) => ({
+        x: Math.max(0, bubble.x - 10),
+        y: Math.max(0, bubble.y - 10),
+        width: Math.min(src.cols - bubble.x, bubble.width + 20),
+        height: Math.min(src.rows - bubble.y, bubble.height + 20),
+      }));
 
       // Clean up
       src.delete();
@@ -311,57 +318,76 @@ function detectTextRegions(imageBlob) {
       hierarchy.delete();
       kernel.delete();
 
-      resolve(textRegions);
+      resolve(expandedBubbles);
     };
 
     img.onerror = reject;
   });
 }
 
-async function extractSpeechBubbles(imageBlob, textRegions) {
+function preprocessImageForOCR(image) {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = image.width * 2; // Scale up for better OCR accuracy
+    canvas.height = image.height * 2;
+    const ctx = canvas.getContext("2d");
+
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    // Convert to grayscale
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+      data[i] = avg; // Red
+      data[i + 1] = avg; // Green
+      data[i + 2] = avg; // Blue
+    }
+    ctx.putImageData(imageData, 0, 0);
+
+    // Apply binary thresholding
+    for (let i = 0; i < data.length; i += 4) {
+      const brightness = data[i];
+      const threshold = 128;
+      const value = brightness < threshold ? 0 : 255;
+      data[i] = data[i + 1] = data[i + 2] = value; // Apply binary threshold
+    }
+    ctx.putImageData(imageData, 0, 0);
+
+    canvas.toBlob(resolve, "image/png");
+  });
+}
+
+async function extractTextFromSpeechBubbles(imageBlob) {
+  const speechBubbles = await detectTextAndBubbles(imageBlob);
+
   const img = new Image();
   img.src = URL.createObjectURL(imageBlob);
+  await img.decode();
 
-  return new Promise((resolve, reject) => {
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(img, 0, 0);
+  const ocrResults = [];
+  for (const bubble of speechBubbles) {
+    const { x, y, width, height } = bubble;
 
-      const src = cv.imread(canvas);
-      const bubbles = [];
+    // Extract the region from the original image
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, x, y, width, height, 0, 0, width, height);
 
-      textRegions.forEach(region => {
-        // Expand the bounding box to include the entire speech bubble
-        const expansion = 10; // Adjust this value as needed
-        const x = Math.max(region.x - expansion, 0);
-        const y = Math.max(region.y - expansion, 0);
-        const width = Math.min(region.width + 2 * expansion, src.cols - x);
-        const height = Math.min(region.height + 2 * expansion, src.rows - y);
+    // Preprocess the cropped image for better OCR
+    const preprocessedBlob = await preprocessImageForOCR(canvas);
 
-        // Extract the region of interest
-        const rect = new cv.Rect(x, y, width, height);
-        const roi = src.roi(rect);
+    // Perform OCR
+    const { data: { text } } = await Tesseract.recognize(preprocessedBlob, "eng", {
+      logger: (m) => console.log(m),
+    });
 
-        // Convert the ROI to a canvas
-        const bubbleCanvas = document.createElement("canvas");
-        bubbleCanvas.width = roi.cols;
-        bubbleCanvas.height = roi.rows;
-        cv.imshow(bubbleCanvas, roi);
+    ocrResults.push({ bubble, text: text.trim() });
+  }
 
-        bubbles.push(bubbleCanvas);
-
-        roi.delete();
-      });
-
-      src.delete();
-      resolve(bubbles);
-    };
-
-    img.onerror = reject;
-  });
+  return ocrResults;
 }
 
 
