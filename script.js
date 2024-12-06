@@ -325,13 +325,13 @@ async function extractTextFromSpeechBubbles(imageBlob) {
     debugCtx.lineWidth = 2;
     debugCtx.strokeRect(region.x, region.y, region.width, region.height);
   });
-
+/*
   // Append the debug canvas to DOM for visualization
   const debugTitle = document.createElement("h3");
   debugTitle.textContent = "Debug Image for Text Regions:";
   document.getElementById("manga-page-container").appendChild(debugTitle);
   document.getElementById("manga-page-container").appendChild(debugCanvas);
-
+*/
   const ocrResults = [];
   for (const bubble of speechBubbles) {
     const { x, y, width, height } = bubble;
